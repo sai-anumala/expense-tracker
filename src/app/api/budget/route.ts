@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { connectDb } from "@/lib/db";
+import { requireUser } from "@/lib/auth";
 import { MAX_AMOUNT, dbErrorResponse, fail, ok, readJsonObject, requireDb, toPaise } from "@/lib/api";
 import { BudgetModel } from "@/models/Budget";
 import { CATEGORY_IDS } from "@/models/Transaction";
 
 export const dynamic = "force-dynamic";
 
-const KEY = "default";
 
 type Lean = { monthlyLimit?: number; categories?: { category: string; limit: number }[] };
 const toDto = (d: Lean | null) => ({
@@ -17,9 +17,11 @@ const toDto = (d: Lean | null) => ({
 export async function GET() {
   const noDb = requireDb();
   if (noDb) return noDb;
+  const user = await requireUser();
+  if (user instanceof NextResponse) return user;
   try {
     await connectDb();
-    const doc = await BudgetModel.findOne({ key: KEY }).lean<Lean>();
+    const doc = await BudgetModel.findOne({ key: user.userId }).lean<Lean>();
     return ok(toDto(doc));
   } catch (err) {
     return dbErrorResponse(err, "GET /api/budget", "Failed to load budget.");
@@ -30,6 +32,8 @@ export async function GET() {
 export async function PUT(req: Request) {
   const noDb = requireDb();
   if (noDb) return noDb;
+  const user = await requireUser();
+  if (user instanceof NextResponse) return user;
   const body = await readJsonObject(req);
   if (body instanceof NextResponse) return body;
 
@@ -56,7 +60,7 @@ export async function PUT(req: Request) {
   try {
     await connectDb();
     const doc = await BudgetModel.findOneAndUpdate(
-      { key: KEY },
+      { key: user.userId },
       { $set: { monthlyLimit: toPaise(monthlyLimit), categories } },
       { upsert: true, new: true, runValidators: true },
     ).lean<Lean>();

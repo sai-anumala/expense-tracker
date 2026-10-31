@@ -6,7 +6,11 @@ import { emptyBudget, emptySettings, type Budget, type Settings, type Transactio
 
 type NewTransaction = Omit<Transaction, "id"> & { receiptName?: string };
 
+export type User = { id: string; name: string; email: string };
+
 type Ctx = {
+  user: User;
+  logout: () => Promise<void>;
   /** All transactions from MongoDB, newest first. */
   transactions: Transaction[];
   add: (t: NewTransaction) => Promise<void>;
@@ -43,7 +47,7 @@ function fallbackMessage(status: number) {
 }
 
 /** fetch wrapper: JSON in/out, timeout, and readable errors for every failure mode. */
-async function api<T>(url: string, init?: RequestInit): Promise<T> {
+export async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   let res: Response;
@@ -66,6 +70,12 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
     clearTimeout(timer);
   }
 
+  // Session expired or missing: go to the login page and come back here afterwards.
+  if (res.status === 401 && typeof window !== "undefined" && !url.startsWith("/api/auth/")) {
+    const here = window.location.pathname + window.location.search;
+    window.location.assign(`/login${here && here !== "/" ? `?next=${encodeURIComponent(here)}` : ""}`);
+  }
+
   const json = await res.json().catch(() => null);
   if (!res.ok || !json?.success) {
     throw new ApiError(typeof json?.error === "string" ? json.error : fallbackMessage(res.status), res.status);
@@ -80,6 +90,7 @@ const byDateDesc = (a: Transaction, b: Transaction) => +new Date(b.date) - +new 
 
 /** All app data is read from and written to MongoDB via the API routes. */
 export function TransactionsProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<User | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [budget, setBudget] = useState<Budget>(emptyBudget);
   const [settings, setSettings] = useState<Settings>(emptySettings);
@@ -89,16 +100,19 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
   const load = useCallback(async () => {
     setStatus("loading");
     try {
-      const [tx, b, s] = await Promise.all([
+      const [me, tx, b, s] = await Promise.all([
+        api<User>("/api/auth/me"),
         api<Transaction[]>("/api/transactions"),
         api<Budget>("/api/budget"),
         api<Settings>("/api/settings"),
       ]);
+      setUser(me);
       setTransactions(tx.sort(byDateDesc));
       setBudget(b);
       setSettings(s);
       setStatus("ready");
     } catch (e) {
+      if (e instanceof ApiError && e.status === 401) return; // redirecting to /login; keep the spinner
       setError(errorMessage(e, "Could not load your data."));
       setStatus("error");
     }
@@ -162,7 +176,16 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     setSettings(await api<Settings>("/api/settings", { method: "PUT", body: JSON.stringify(s) }));
   }, []);
 
-  if (status === "loading") {
+  const logout = useCallback(async () => {
+    try {
+      await api("/api/auth/logout", { method: "POST" });
+    } finally {
+      // Full reload clears all in-memory data from the previous user.
+      window.location.assign("/login");
+    }
+  }, []);
+
+  if (status === "loading" || (status === "ready" && !user)) {
     return (
       <div className="grid min-h-dvh place-items-center bg-surface" aria-busy="true" aria-live="polite">
         <span className="size-8 animate-spin rounded-full border-2 border-surface-container-high border-t-primary" />
@@ -192,7 +215,9 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
   }
 
   return (
-    <AppDataContext.Provider value={{ transactions, add, update, remove, budget, saveBudget, settings, saveSettings }}>
+    <AppDataContext.Provider
+      value={{ user: user!, logout, transactions, add, update, remove, budget, saveBudget, settings, saveSettings }}
+    >
       {children}
     </AppDataContext.Provider>
   );

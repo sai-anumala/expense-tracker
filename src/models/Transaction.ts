@@ -1,4 +1,4 @@
-import { Schema, model, models, type InferSchemaType, type Model } from "mongoose";
+import { Schema, Types, model, models, type InferSchemaType, type Model } from "mongoose";
 
 export const CATEGORY_IDS = [
   "food",
@@ -15,6 +15,8 @@ export const CATEGORY_IDS = [
 
 const TransactionSchema = new Schema(
   {
+    /** Owner (User._id). Every query filters on this so users only see their own data. */
+    userId: { type: Types.ObjectId, ref: "User", required: true, index: true },
     merchant: { type: String, required: true, trim: true, maxlength: 120 },
     category: { type: String, required: true, enum: CATEGORY_IDS },
     /** Negative = expense, positive = income. */

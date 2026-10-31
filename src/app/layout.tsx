@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { Hanken_Grotesk, JetBrains_Mono } from "next/font/google";
-import { TransactionsProvider } from "@/lib/store";
 import "./globals.css";
 
 const hanken = Hanken_Grotesk({ variable: "--font-hanken", subsets: ["latin"] });
@@ -22,9 +21,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en" className={`${hanken.variable} ${jetbrains.variable}`}>
       <body className="antialiased">
-        <TransactionsProvider>
-          <div className="mx-auto min-h-dvh max-w-md bg-surface">{children}</div>
-        </TransactionsProvider>
+        <div className="mx-auto min-h-dvh max-w-md bg-surface">{children}</div>
       </body>
     </html>
   );

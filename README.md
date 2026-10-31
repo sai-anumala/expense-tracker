@@ -4,6 +4,7 @@ A mobile-first expense tracker built with **Next.js 15 (App Router)**, **Tailwin
 
 ## Features
 
+- **Accounts** — anyone can sign up with email + password; each user sees only their own transactions, budget and balance
 - **Overview** — total available balance (opening balance + income − spending) with monthly growth, this month's Income / Spent / To Spend, budget pacing, recent transactions
 - **Add / edit transactions** — expense or income, category, date & time picker, payment method; edits and deletes require confirmation
 - **Budgets** — overall monthly limit and per-category limits
@@ -25,6 +26,7 @@ npm run dev                  # http://localhost:3000
 | --- | --- |
 | `MONGODB_URI` | MongoDB connection string (Atlas → Cluster → Connect → Drivers) |
 | `MONGODB_DB` | Database name (default `ledgerly`) |
+| `AUTH_SECRET` | 32+ random characters used to sign login sessions (`openssl rand -hex 32`). Changing it logs everyone out |
 
 Check the connection at `GET /api/health`.
 
@@ -32,13 +34,15 @@ Check the connection at `GET /api/health`.
 
 | Method | Route | Purpose |
 | --- | --- | --- |
+| POST | `/api/auth/signup` · `/api/auth/login` · `/api/auth/logout` | Create account / sign in / sign out (httpOnly session cookie) |
+| GET | `/api/auth/me` | Signed-in user |
 | GET / POST | `/api/transactions` | List / create transactions |
 | PUT / DELETE | `/api/transactions/:id` | Update / delete a transaction |
 | GET / PUT | `/api/budget` | Monthly and category limits |
 | GET / PUT | `/api/settings` | Opening balance |
 | GET | `/api/health` | Database connectivity |
 
-Responses use `{ success, payload }` or `{ success: false, error }`.
+Responses use `{ success, payload }` or `{ success: false, error }`. All routes except auth and health require a session and only touch the signed-in user's data.
 
 ## Project structure
 
@@ -47,7 +51,8 @@ src/
   app/            pages (/, /add, /budgets, /analytics, /accounts) and API routes
   components/     UI pieces (date picker, confirm dialog, amount form, nav)
   lib/            store (client data), db connection, validation, formatting, insights
-  models/         Mongoose models: Transaction, Budget, Settings
+  models/         Mongoose models: User, Transaction, Budget, Settings
+  middleware.ts   redirects signed-out visitors to /login
 design/           Stitch screenshots and DESIGN.md
 ```
 

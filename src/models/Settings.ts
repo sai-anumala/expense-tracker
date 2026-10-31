@@ -2,8 +2,8 @@ import { Schema, model, models, type InferSchemaType, type Model } from "mongoos
 
 const SettingsSchema = new Schema(
   {
-    /** Single-user app: one settings document identified by this key. */
-    key: { type: String, required: true, unique: true, default: "default" },
+    /** Owner's user id (one settings document per user). */
+    key: { type: String, required: true, unique: true },
     /** Money held when tracking started, exactly as entered; null = not set. */
     openingBalance: { type: Number, default: null, min: 0 },
   },

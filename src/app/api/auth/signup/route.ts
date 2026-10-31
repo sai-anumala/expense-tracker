@@ -1,0 +1,40 @@
+import { NextResponse } from "next/server";
+import bcrypt from "bcryptjs";
+import { connectDb } from "@/lib/db";
+import { dbErrorResponse, fail, ok, readJsonObject, requireDb } from "@/lib/api";
+import { setSessionCookie } from "@/lib/auth";
+import { normalizeEmail, validateEmail, validateName, validatePassword } from "@/lib/authInput";
+import { isAuthConfigured } from "@/lib/session";
+import { UserModel } from "@/models/User";
+
+export const dynamic = "force-dynamic";
+
+/** POST /api/auth/signup { name, email, password } — creates an account and signs in. */
+export async function POST(req: Request) {
+  const noDb = requireDb();
+  if (noDb) return noDb;
+  if (!isAuthConfigured()) return fail(503, "Sign-up isn't configured on the server (AUTH_SECRET missing).");
+
+  const body = await readJsonObject(req);
+  if (body instanceof NextResponse) return body;
+
+  const { name, error: nameError } = validateName(body.name);
+  if (nameError) return fail(400, nameError);
+  const email = normalizeEmail(body.email);
+  const emailError = validateEmail(email);
+  if (emailError) return fail(400, emailError);
+  const pwError = validatePassword(body.password);
+  if (pwError) return fail(400, pwError);
+
+  try {
+    await connectDb();
+    if (await UserModel.exists({ email })) return fail(409, "An account with this email already exists. Try logging in.");
+    const passwordHash = await bcrypt.hash(body.password as string, 12);
+    const user = await UserModel.create({ name, email, passwordHash });
+    const session = { userId: user._id.toString(), email: user.email, name: user.name };
+    return setSessionCookie(ok({ id: session.userId, name, email }, 201), session);
+  } catch (err) {
+    if ((err as { code?: number })?.code === 11000) return fail(409, "An account with this email already exists. Try logging in.");
+    return dbErrorResponse(err, "POST /api/auth/signup", "Could not create your account. Please try again.");
+  }
+}

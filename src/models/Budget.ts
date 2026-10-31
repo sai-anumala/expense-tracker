@@ -3,8 +3,8 @@ import { CATEGORY_IDS } from "./Transaction";
 
 const BudgetSchema = new Schema(
   {
-    /** Single-user app: one budget document identified by this key. */
-    key: { type: String, required: true, unique: true, default: "default" },
+    /** Owner's user id (one budget per user). */
+    key: { type: String, required: true, unique: true },
     monthlyLimit: { type: Number, required: true, min: 0, default: 0 },
     categories: {
       type: [

@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { connectDb } from "@/lib/db";
+import { requireUser } from "@/lib/auth";
 import { MAX_AMOUNT, dbErrorResponse, fail, ok, readJsonObject, requireDb, toPaise } from "@/lib/api";
 import { SettingsModel } from "@/models/Settings";
 
 export const dynamic = "force-dynamic";
 
-const KEY = "default";
 
 type Lean = { openingBalance?: number | null };
 const toDto = (d: Lean | null) => ({ openingBalance: d?.openingBalance ?? null });
@@ -13,9 +13,11 @@ const toDto = (d: Lean | null) => ({ openingBalance: d?.openingBalance ?? null }
 export async function GET() {
   const noDb = requireDb();
   if (noDb) return noDb;
+  const user = await requireUser();
+  if (user instanceof NextResponse) return user;
   try {
     await connectDb();
-    const doc = await SettingsModel.findOne({ key: KEY }).lean<Lean>();
+    const doc = await SettingsModel.findOne({ key: user.userId }).lean<Lean>();
     return ok(toDto(doc));
   } catch (err) {
     return dbErrorResponse(err, "GET /api/settings", "Failed to load settings.");
@@ -26,6 +28,8 @@ export async function GET() {
 export async function PUT(req: Request) {
   const noDb = requireDb();
   if (noDb) return noDb;
+  const user = await requireUser();
+  if (user instanceof NextResponse) return user;
   const body = await readJsonObject(req);
   if (body instanceof NextResponse) return body;
   if (!("openingBalance" in body)) return fail(400, "openingBalance is required.");
@@ -40,7 +44,7 @@ export async function PUT(req: Request) {
   try {
     await connectDb();
     const doc = await SettingsModel.findOneAndUpdate(
-      { key: KEY },
+      { key: user.userId },
       { $set: { openingBalance: openingBalance === null ? null : toPaise(openingBalance) } },
       { upsert: true, new: true, runValidators: true },
     ).lean<Lean>();

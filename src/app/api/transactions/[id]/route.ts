@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { isValidObjectId } from "mongoose";
 import { connectDb } from "@/lib/db";
 import { dbErrorResponse, fail, ok, readJsonObject, requireDb } from "@/lib/api";
+import { requireUser } from "@/lib/auth";
 import { parseTransactionInput, toTransactionDto } from "@/lib/transactionInput";
 import { TransactionModel } from "@/models/Transaction";
 
@@ -9,12 +10,15 @@ export const dynamic = "force-dynamic";
 
 type Params = { params: Promise<{ id: string }> };
 
+// Same message for "doesn't exist" and "belongs to someone else", so IDs can't be probed.
 const NOT_FOUND = "This transaction no longer exists. It may have been deleted.";
 
-/** PUT /api/transactions/:id — replace a transaction's editable fields. */
+/** PUT /api/transactions/:id — replace one of the signed-in user's transactions. */
 export async function PUT(req: Request, { params }: Params) {
   const noDb = requireDb();
   if (noDb) return noDb;
+  const user = await requireUser();
+  if (user instanceof NextResponse) return user;
   const { id } = await params;
   if (!isValidObjectId(id)) return fail(404, NOT_FOUND);
 
@@ -29,7 +33,10 @@ export async function PUT(req: Request, { params }: Params) {
     const update: Record<string, unknown> = { $set: receiptName ? { ...fields, receiptName } : fields };
     // Clear the payment method if it was removed; keep an existing receipt unless a new one was attached.
     if (!fields.account) update.$unset = { account: 1 };
-    const doc = await TransactionModel.findByIdAndUpdate(id, update, { new: true, runValidators: true }).lean();
+    const doc = await TransactionModel.findOneAndUpdate({ _id: id, userId: user.userId }, update, {
+      new: true,
+      runValidators: true,
+    }).lean();
     if (!doc) return fail(404, NOT_FOUND);
     return ok(toTransactionDto(doc));
   } catch (err) {
@@ -41,11 +48,13 @@ export async function PUT(req: Request, { params }: Params) {
 export async function DELETE(_req: Request, { params }: Params) {
   const noDb = requireDb();
   if (noDb) return noDb;
+  const user = await requireUser();
+  if (user instanceof NextResponse) return user;
   const { id } = await params;
   if (!isValidObjectId(id)) return fail(404, NOT_FOUND);
   try {
     await connectDb();
-    const doc = await TransactionModel.findByIdAndDelete(id).lean();
+    const doc = await TransactionModel.findOneAndDelete({ _id: id, userId: user.userId }).lean();
     if (!doc) return fail(404, NOT_FOUND);
     return ok({ id });
   } catch (err) {

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { UserMenu } from "./UserMenu";
 import { Bell, CalendarDays, ChevronDown, Wallet, type LucideIcon } from "lucide-react";
 import type { Tone } from "@/lib/data";
 
@@ -30,17 +31,6 @@ export function IconTile({
   );
 }
 
-export function Avatar() {
-  return (
-    <span
-      aria-label="Your profile"
-      className="grid size-10 place-items-center rounded-full bg-primary text-sm font-semibold text-on-primary"
-    >
-      SA
-    </span>
-  );
-}
-
 export function Logo() {
   return (
     <span className="grid size-9 place-items-center rounded-lg bg-primary text-on-primary">
@@ -63,7 +53,7 @@ export function AppHeader({ subtitle }: { subtitle: string }) {
         <button aria-label="Notifications" className="rounded-full p-2 hover:bg-surface-container">
           <Bell className="size-5" />
         </button>
-        <Avatar />
+        <UserMenu />
       </div>
     </header>
   );

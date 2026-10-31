@@ -13,7 +13,7 @@ import {
   CircleCheck,
   Trash2,
 } from "lucide-react";
-import { Avatar } from "@/components/ui";
+import { UserMenu } from "@/components/UserMenu";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { DateTimePicker } from "@/components/DateTimePicker";
 import { categories, paymentMethods, pickableCategories, type CategoryId } from "@/lib/data";
@@ -114,7 +114,7 @@ function AddTransaction() {
           <ArrowLeft className="size-6" />
         </Link>
         <h1 className="flex-1 text-2xl font-semibold tracking-tight">{isEdit ? "Edit Transaction" : "Add Transaction"}</h1>
-        <Avatar />
+        <UserMenu />
       </header>
 
       <main className="space-y-6 px-5 pt-2">
