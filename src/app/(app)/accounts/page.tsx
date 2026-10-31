@@ -61,7 +61,7 @@ export default function Accounts() {
               {shown.length === 0 ? (
                 <EmptyState icon={ReceiptText} title="Nothing here" body="No transactions for this method." />
               ) : (
-                <ul className="card divide-y divide-surface-container px-5">
+                <ul className="card divide-y divide-surface-container overflow-hidden px-5">
                   {shown.map((t) => (
                     <TransactionRow key={t.id} t={t} />
                   ))}

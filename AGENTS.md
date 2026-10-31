@@ -182,7 +182,7 @@ src/
 ├─ components/
 │  ├─ ui.tsx                     AppHeader (logo, bell [no-op], UserMenu), Logo, IconTile, MonthPill [no-op], ProgressBar, SectionTitle
 │  ├─ BottomNav.tsx              Fixed bottom nav + center FAB (/add); TabPage wrapper (padding above nav)
-│  ├─ TransactionRow.tsx         Row linking to /add?id=…; EmptyState component
+│  ├─ TransactionRow.tsx         Swipeable row (drag left / tap → View · Edit · Delete), details pop-up, delete confirm; EmptyState
 │  ├─ AmountForm.tsx             Inline ₹ amount form (validates, shows its own errors); sanitizeAmount()
 │  ├─ ConfirmDialog.tsx          <dialog> Yes/Cancel modal (danger variant, busy state)
 │  ├─ DateTimePicker.tsx         Field + compact centered calendar/time pop-up; formatWhen(); future dates disabled
@@ -336,6 +336,8 @@ Reference scenario (from the spec): budget 3,000, spent 1,830.40 → Remaining 1
   - New → saves immediately. **Edit → "Save changes?" confirm (Yes/Cancel). Delete → danger confirm.** On success → `/`.
   - Unknown/foreign id → "Transaction not found" screen.
 - **DateTimePicker:** field shows "Today, 2:45 PM" / "Yesterday, …" / "Fri, 24 Oct, …"; tapping opens a **compact centered pop-up** (max 20rem wide, 1rem margin on phones) with preview, Now/Yesterday/2 days ago, Monday-first calendar, hour/minute/AM-PM; future days and times disabled; Done/Cancel; Esc or backdrop tap closes.
+- **Transaction rows** (Overview recent list, Accounts history): **swipe left** (touch or mouse drag) or **tap / Enter** to reveal three actions: **View** (read-only details pop-up with an Edit button), **Edit** (`/add?id=…`), **Delete** (confirm dialog, "Yes, delete"). Only one row is open at a time (window event `ledgerly:row-open`); vertical scrolling stays native (`touch-action: pan-y`). Rows no longer navigate on tap.
+- **Monthly Budget card:** app font with tabular digits; the spent/cap row and the "Daily safe pace" row wrap on narrow phones, with "N days left" in its own pill so they never collide.
 - **Budgets:** Set Limit (inline AmountForm), add category budget (chips + amount), remove → confirm dialog.
 - **Header:** logo + subtitle, bell (no-op), UserMenu (initials → name/email/Log out).
 - **Bottom nav:** Overview, Analytics, [+ FAB → /add], Budgets, Accounts.
@@ -359,7 +361,7 @@ Tokens are defined in `src/app/globals.css` under `@theme` and used as Tailwind 
 | Radii | `sm .25rem`, default `.5rem`, `md .75rem`, `lg 1rem`, `xl 1.5rem` | |
 
 - Utilities: `label-caps` (11px, 600, 0.06em, uppercase), `card` (white, rounded-xl, soft shadow).
-- Numbers/amounts use `font-mono` (JetBrains Mono), **except** the big figures: the balance hero (36px bold, cents in `on-surface-variant`, two blurred glow blobs) and the **Add/Edit amount input** (Hanken Grotesk `text-5xl font-bold tabular-nums`, ₹ in `text-outline`).
+- Numbers/amounts use `font-mono` (JetBrains Mono), **except** transaction-row amounts and the Monthly Budget card (app font + `tabular-nums`) and the big figures: the balance hero (36px bold, cents in `on-surface-variant`, two blurred glow blobs) and the **Add/Edit amount input** (Hanken Grotesk `text-5xl font-bold tabular-nums`, ₹ in `text-outline`).
 - Layout: single centered column `max-w-md`; light theme only.
 
 ---
@@ -449,6 +451,7 @@ For isolated tests use a **temporary local MongoDB** (`mongod --dbpath <tmp> --p
 | 2026-10-31 | Transfer tab, Subscriptions, Suggested Match removed | No real data source |
 | 2026-10-31 | `develop` → preview, `main` → production; shared DB | User choice (separate dev DB declined) |
 | 2026-10-31 | Payment defaults to UPI; date picker is a compact centered pop-up | User request |
+| 2026-10-31 | Transaction rows: swipe-left actions (View/Edit/Delete) instead of tap-to-edit; tap also toggles for desktop/accessibility | User request |
 | 2026-10-31 | Added real categories home, fuel, friend, rent, education, gifts, personal behind a "Show more" tile (Other moved there). A short-lived `subcategory` field was removed (no data used it) | User request: categories only, no sub-levels; they work in budgets and analytics too |
 | 2026-10-31 | Balance is anchored in time: only transactions dated ≥ `balanceAsOf` change it; anchor truncated to the minute; legacy docs fall back to `updatedAt` | User request. Fixes double-counting when a user enters their current balance after already logging transactions |
 | 2026-10-31 | Upgraded Next 15.5.28 / React 19.1.10 / Mongoose 8.24.x | Security advisories; Vercel deploy block |

@@ -184,7 +184,7 @@ export default function Dashboard() {
               Monthly Budget
             </h2>
             {limit > 0 && (
-              <span className="rounded-full bg-primary-fixed/50 px-3 py-1 font-mono text-sm font-semibold text-primary">
+              <span className="shrink-0 rounded-full bg-primary-fixed/50 px-3 py-1 text-sm font-semibold tabular-nums text-primary">
                 {Math.round(used * 100)}% used
               </span>
             )}
@@ -192,16 +192,29 @@ export default function Dashboard() {
           {limit > 0 ? (
             <>
               <ProgressBar value={used} tone={used < 0.9 ? "primary" : "tertiary"} />
-              <div className="mt-3 flex justify-between font-mono text-sm text-on-surface-variant">
-                <span>{money(spent)} spent</span>
-                <span>{money(limit)} cap</span>
-              </div>
-              <div className="mt-4 flex items-center justify-between text-sm">
-                <span className="flex items-center gap-2 text-on-surface-variant">
-                  <Clock className="size-4 text-tertiary" aria-hidden /> Daily safe pace:
-                  <b className="font-mono text-on-surface">{money(Math.max(0, toSpend) / daysLeft)}/day</b>
+              {/* Spent / cap: app font with tabular digits; wraps on very narrow screens */}
+              <div className="mt-3 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-xs tabular-nums text-on-surface-variant sm:text-sm">
+                <span>
+                  <b className="font-semibold text-on-surface">{money(spent)}</b> spent
                 </span>
-                <span className="font-mono text-on-surface-variant">{plural(daysLeft, "day")} left</span>
+                <span>
+                  of <b className="font-semibold text-on-surface">{money(limit)}</b> cap
+                </span>
+              </div>
+              {/* Daily pace + days left: separate pill so they never collide on mobile */}
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-xs sm:text-sm">
+                <span className="flex min-w-0 items-center gap-1.5 text-on-surface-variant">
+                  <Clock className="size-4 shrink-0 text-tertiary" aria-hidden />
+                  <span>
+                    Daily safe pace{" "}
+                    <b className="font-semibold whitespace-nowrap tabular-nums text-on-surface">
+                      {money(Math.max(0, toSpend) / daysLeft)}/day
+                    </b>
+                  </span>
+                </span>
+                <span className="shrink-0 rounded-full bg-surface-container px-2.5 py-1 font-medium whitespace-nowrap tabular-nums text-on-surface-variant">
+                  {plural(daysLeft, "day")} left
+                </span>
               </div>
             </>
           ) : (
@@ -247,6 +260,9 @@ export default function Dashboard() {
               </Link>
             )}
           </div>
+          {transactions.length > 0 && (
+            <p className="mb-1 px-1 text-xs text-on-surface-variant">Swipe a transaction left (or tap it) to view, edit or delete.</p>
+          )}
           {transactions.length === 0 ? (
             <EmptyState
               icon={ReceiptText}
@@ -271,7 +287,7 @@ export default function Dashboard() {
                       {dayNet > 0 && " net"}
                     </span>
                   </div>
-                  <ul className="card divide-y divide-surface-container px-5">
+                  <ul className="card divide-y divide-surface-container overflow-hidden px-5">
                     {list.map((t) => (
                       <TransactionRow key={t.id} t={t} />
                     ))}
