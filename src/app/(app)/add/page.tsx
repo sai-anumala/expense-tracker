@@ -152,8 +152,9 @@ function AddTransaction() {
           <label htmlFor="amount" className="label-caps text-on-surface-variant">
             Amount {kind === "expense" ? "Spent" : "Received"}
           </label>
-          <div className="mt-2 flex items-center justify-center font-mono text-5xl font-semibold">
-            <span className="text-outline">{CURRENCY_SYMBOL}</span>
+          {/* Amount uses the app font (Hanken Grotesk, bold) like the balance hero; tabular digits keep width stable. */}
+          <div className="mt-2 flex items-baseline justify-center font-sans text-5xl font-bold tracking-tight tabular-nums">
+            <span className="mr-1 text-4xl font-semibold text-outline">{CURRENCY_SYMBOL}</span>
             <input
               id="amount"
               inputMode="decimal"
@@ -162,7 +163,7 @@ function AddTransaction() {
               value={amount}
               aria-invalid={tooLarge}
               onChange={(e) => setAmount(sanitizeAmount(e.target.value))}
-              className="bg-transparent caret-primary outline-none placeholder:text-outline-variant"
+              className="bg-transparent caret-primary outline-none placeholder:font-semibold placeholder:text-outline-variant"
               style={{ width: `${Math.max(4, amount.length) + 0.5}ch` }}
             />
           </div>

@@ -359,7 +359,7 @@ Tokens are defined in `src/app/globals.css` under `@theme` and used as Tailwind 
 | Radii | `sm .25rem`, default `.5rem`, `md .75rem`, `lg 1rem`, `xl 1.5rem` | |
 
 - Utilities: `label-caps` (11px, 600, 0.06em, uppercase), `card` (white, rounded-xl, soft shadow).
-- Numbers/amounts use `font-mono` (JetBrains Mono). Balance hero: 36px bold, cents in `on-surface-variant`, two blurred glow blobs.
+- Numbers/amounts use `font-mono` (JetBrains Mono), **except** the big figures: the balance hero (36px bold, cents in `on-surface-variant`, two blurred glow blobs) and the **Add/Edit amount input** (Hanken Grotesk `text-5xl font-bold tabular-nums`, ₹ in `text-outline`).
 - Layout: single centered column `max-w-md`; light theme only.
 
 ---
