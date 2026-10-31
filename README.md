@@ -56,6 +56,22 @@ src/
 design/           Stitch screenshots and DESIGN.md
 ```
 
+## Branches & deployment
+
+| Branch | Purpose | Vercel |
+| --- | --- | --- |
+| `develop` | Day-to-day development — commit and push here | Preview deployment on every push: `expense-tracker-git-develop-sai-anumalas-projects.vercel.app` |
+| `main` | Production — only updated by merging `develop` | Production deployment: `expense-tracker-sage-six-21.vercel.app` |
+
+Release to production:
+
+```bash
+git checkout main && git pull
+git merge --ff-only develop   # or open a PR develop → main on GitHub
+git push origin main          # triggers the production deploy
+git checkout develop
+```
+
 ## Scripts
 
 `npm run dev` · `npm run build` · `npm run start` · `npm run lint`
