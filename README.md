@@ -1,36 +1,56 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Ledgerly — Expense Tracker
 
-## Getting Started
+A mobile-first expense tracker built with **Next.js 15 (App Router)**, **Tailwind CSS v4**, and **MongoDB (Mongoose)**. UI based on the Google Stitch design "Clean Expense Tracker" (references in [`design/`](design)).
 
-First, run the development server:
+## Features
+
+- **Overview** — total available balance (opening balance + income − spending) with monthly growth, this month's Income / Spent / To Spend, budget pacing, recent transactions
+- **Add / edit transactions** — expense or income, category, date & time picker, payment method; edits and deletes require confirmation
+- **Budgets** — overall monthly limit and per-category limits
+- **Analytics** — week / month / year totals vs previous period, category breakdown, top merchants, 4-week trend, CSV export
+- **Accounts** — totals per payment method and full history
+- Amounts in **INR (₹)** with Indian digit grouping
+
+## Getting started
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+cp .env.example .env.local   # then fill in MONGODB_URI
+npm run dev                  # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Environment variables (`.env.local`)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Variable | Description |
+| --- | --- |
+| `MONGODB_URI` | MongoDB connection string (Atlas → Cluster → Connect → Drivers) |
+| `MONGODB_DB` | Database name (default `ledgerly`) |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Check the connection at `GET /api/health`.
 
-## Learn More
+## API
 
-To learn more about Next.js, take a look at the following resources:
+| Method | Route | Purpose |
+| --- | --- | --- |
+| GET / POST | `/api/transactions` | List / create transactions |
+| PUT / DELETE | `/api/transactions/:id` | Update / delete a transaction |
+| GET / PUT | `/api/budget` | Monthly and category limits |
+| GET / PUT | `/api/settings` | Opening balance |
+| GET | `/api/health` | Database connectivity |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Responses use `{ success, payload }` or `{ success: false, error }`.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Project structure
 
-## Deploy on Vercel
+```
+src/
+  app/            pages (/, /add, /budgets, /analytics, /accounts) and API routes
+  components/     UI pieces (date picker, confirm dialog, amount form, nav)
+  lib/            store (client data), db connection, validation, formatting, insights
+  models/         Mongoose models: Transaction, Budget, Settings
+design/           Stitch screenshots and DESIGN.md
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Scripts
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+`npm run dev` · `npm run build` · `npm run start` · `npm run lint`

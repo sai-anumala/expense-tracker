@@ -1,26 +1,61 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* Design tokens from Stitch project "Clean Expense Tracker" (Kinetic Ledger) */
+@theme {
+  --color-surface: #f7f9ff;
+  --color-surface-dim: #d5dae4;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #eef4fe;
+  --color-surface-container: #e9eef8;
+  --color-surface-container-high: #e3e8f2;
+  --color-surface-container-highest: #dde3ec;
+  --color-on-surface: #161c23;
+  --color-on-surface-variant: #3d4a42;
+  --color-outline: #6d7a72;
+  --color-outline-variant: #bccac0;
+
+  --color-primary: #006947;
+  --color-on-primary: #ffffff;
+  --color-primary-container: #00855b;
+  --color-primary-fixed: #86f8c2;
+  --color-primary-fixed-dim: #69dba8;
+
+  --color-secondary: #af301d;
+  --color-secondary-container: #fe684f;
+  --color-secondary-fixed: #ffdad4;
+
+  --color-tertiary: #8a4c00;
+  --color-tertiary-container: #ae6100;
+  --color-tertiary-fixed: #ffdcc1;
+
+  --color-error: #ba1a1a;
+
+  --font-sans: var(--font-hanken), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, monospace;
+
+  --radius-sm: 0.25rem;
+  --radius: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.5rem;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+@utility label-caps {
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+@utility card {
+  background: var(--color-surface-container-lowest);
+  border-radius: var(--radius-xl);
+  box-shadow: 0 1px 2px rgb(22 28 35 / 0.04), 0 4px 16px rgb(22 28 35 / 0.04);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-surface);
+  color: var(--color-on-surface);
+  font-family: var(--font-sans);
 }

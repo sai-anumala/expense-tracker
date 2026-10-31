@@ -1,103 +1,324 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import Link from "next/link";
+import { useState } from "react";
+import {
+  ArrowDown,
+  ArrowUp,
+  PiggyBank,
+  TrendingUp,
+  TrendingDown,
+  Leaf,
+  PieChart,
+  Clock,
+  CirclePlus,
+  Banknote,
+  ChartSpline,
+  ChevronRight,
+  Lightbulb,
+  ReceiptText,
+  Pencil,
+  X,
+} from "lucide-react";
+import { AmountForm } from "@/components/AmountForm";
+import { AppHeader, MonthPill, ProgressBar } from "@/components/ui";
+import { TabPage } from "@/components/BottomNav";
+import { EmptyState, TransactionRow } from "@/components/TransactionRow";
+import { useAppData } from "@/lib/store";
+import { categories, type Transaction } from "@/lib/data";
+import { categoryInsight, net, periodBounds, totalIncome, totalSpent, within } from "@/lib/insights";
+import { dayBucket, daysLeftInMonth, plural, money, monthLabel } from "@/lib/format";
+
+const quickActions = [
+  { label: "Add Expense", icon: CirclePlus, href: "/add", accent: true },
+  { label: "Add Income", icon: Banknote, href: "/add?kind=income" },
+  { label: "Budgets", icon: PieChart, href: "/budgets" },
+  { label: "Analytics", icon: ChartSpline, href: "/analytics" },
+];
+
+export default function Dashboard() {
+  const { transactions, budget, settings, saveSettings } = useAppData();
+  const [tipOpen, setTipOpen] = useState(true);
+  const [editingOpening, setEditingOpening] = useState(false);
+
+  const [monthStart] = periodBounds("month");
+  const thisMonth = within(transactions, periodBounds("month"));
+
+  // Total Available Balance: opening balance + every income − every expense.
+  const opening = settings.openingBalance;
+  const balance = (opening ?? 0) + net(transactions);
+  // Balance at the start of this month, for the "+x% this mo" growth badge.
+  const balanceAtMonthStart = (opening ?? 0) + net(transactions.filter((t) => new Date(t.date) < monthStart));
+  const growth = balanceAtMonthStart > 0 ? ((balance - balanceAtMonthStart) / balanceAtMonthStart) * 100 : null;
+
+  // Triad row: this month's cash flow. To Spend = monthly budget cap − spent this month.
+  const income = totalIncome(thisMonth);
+  const spent = totalSpent(thisMonth);
+  const limit = budget.monthlyLimit;
+  const toSpend = limit - spent;
+  const used = limit > 0 ? spent / limit : 0;
+  const daysLeft = daysLeftInMonth();
+  const [whole, cents] = money(balance).split(".");
+  const insight = categoryInsight(transactions);
+
+  const groups = new Map<string, Transaction[]>();
+  for (const t of transactions.slice(0, 8)) {
+    const k = dayBucket(t.date);
+    groups.set(k, [...(groups.get(k) ?? []), t]);
+  }
+
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
-
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+    <>
+      <AppHeader subtitle="Overview" />
+      <TabPage>
+        <div className="flex items-center justify-between">
+          <MonthPill label={monthLabel()} />
+          {limit > 0 && (
+            <span
+              className={`label-caps flex items-center gap-1.5 rounded-full px-3 py-2 ${
+                used < 0.85 ? "bg-primary-fixed/50 text-primary" : "bg-tertiary-fixed text-tertiary"
+              }`}
+            >
+              <Leaf className="size-4" aria-hidden />{" "}
+              {used < 0.85 ? "On track" : used <= 1 ? "Watch spend" : "Over budget"}
+            </span>
+          )}
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+
+        {/* Balance (Stitch: "Hero Total Balance Card") */}
+        <section className="relative overflow-hidden rounded-xl bg-surface-container-lowest p-4 shadow-sm">
+          {/* ambient glow */}
+          <div className="pointer-events-none absolute -top-8 -right-8 size-32 rounded-full bg-primary/10 blur-2xl" />
+          <div className="pointer-events-none absolute -bottom-6 -left-6 size-24 rounded-full bg-primary-fixed/20 blur-xl" />
+
+          <div className="relative z-10 flex flex-col space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-1 text-xs font-medium text-on-surface-variant">
+                Total Available Balance
+                {opening !== null && !editingOpening && (
+                  <button
+                    aria-label="Edit opening balance"
+                    title="Edit opening balance"
+                    onClick={() => setEditingOpening(true)}
+                    className="rounded-full p-1 text-outline hover:bg-surface-container hover:text-on-surface"
+                  >
+                    <Pencil className="size-3" />
+                  </button>
+                )}
+              </span>
+              {growth !== null && Math.abs(growth) >= 0.05 && !editingOpening && (
+                <span
+                  className={`label-caps inline-flex shrink-0 items-center gap-1 rounded-full bg-surface-container px-2 py-0.5 normal-case ${
+                    growth >= 0 ? "text-primary" : "text-secondary"
+                  }`}
+                >
+                  {growth >= 0 ? <TrendingUp className="size-3" aria-hidden /> : <TrendingDown className="size-3" aria-hidden />}
+                  {growth >= 0 ? "+" : "-"}
+                  {Math.abs(growth).toFixed(1)}% this mo
+                </span>
+              )}
+            </div>
+
+            {opening === null || editingOpening ? (
+              <div>
+                <p className="text-sm text-on-surface-variant">
+                  Enter your opening balance: the money you had when you started tracking. Income adds to it and
+                  spending subtracts from it.
+                </p>
+                <AmountForm
+                  label="Opening balance"
+                  initial={opening ?? undefined}
+                  onCancel={opening !== null ? () => setEditingOpening(false) : undefined}
+                  onSave={async (v) => {
+                    await saveSettings({ openingBalance: v }); // errors are shown by AmountForm
+                    setEditingOpening(false);
+                  }}
+                />
+              </div>
+            ) : (
+              <div className="flex items-baseline gap-1">
+                <span
+                  className={`text-[36px] leading-[44px] font-bold tracking-[-0.03em] ${
+                    balance < 0 ? "text-secondary" : "text-on-surface"
+                  }`}
+                >
+                  {balance < 0 && "-"}
+                  {whole}
+                  <span className="font-medium text-on-surface-variant">.{cents}</span>
+                </span>
+              </div>
+            )}
+
+            {/* Triad metrics: this month */}
+            <div className="grid grid-cols-3 gap-1 pt-1">
+              <Metric icon={ArrowDown} label="Income" value={`+${money(income)}`} tone="primary" />
+              <Metric icon={ArrowUp} label="Spent" value={`-${money(spent)}`} tone="secondary" />
+              <Metric
+                icon={PiggyBank}
+                label="To Spend"
+                value={limit > 0 ? `${toSpend < 0 ? "-" : ""}${money(toSpend)}` : "—"}
+                tone={toSpend < 0 ? "secondary" : "neutral"}
+                title={
+                  limit > 0
+                    ? `${money(limit)} monthly budget − ${money(spent)} spent this month`
+                    : "Set a monthly budget to see what's safe to spend"
+                }
+              />
+            </div>
+          </div>
+        </section>
+
+        {/* Monthly budget */}
+        <section className="card p-6">
+          <div className="mb-5 flex items-center justify-between">
+            <h2 className="flex items-center gap-3 text-lg font-semibold">
+              <span className="grid size-10 place-items-center rounded-lg bg-surface-container">
+                <PieChart className="size-5 text-primary" aria-hidden />
+              </span>
+              Monthly Budget
+            </h2>
+            {limit > 0 && (
+              <span className="rounded-full bg-primary-fixed/50 px-3 py-1 font-mono text-sm font-semibold text-primary">
+                {Math.round(used * 100)}% used
+              </span>
+            )}
+          </div>
+          {limit > 0 ? (
+            <>
+              <ProgressBar value={used} tone={used < 0.9 ? "primary" : "tertiary"} />
+              <div className="mt-3 flex justify-between font-mono text-sm text-on-surface-variant">
+                <span>{money(spent)} spent</span>
+                <span>{money(limit)} cap</span>
+              </div>
+              <div className="mt-4 flex items-center justify-between text-sm">
+                <span className="flex items-center gap-2 text-on-surface-variant">
+                  <Clock className="size-4 text-tertiary" aria-hidden /> Daily safe pace:
+                  <b className="font-mono text-on-surface">{money(Math.max(0, toSpend) / daysLeft)}/day</b>
+                </span>
+                <span className="font-mono text-on-surface-variant">{plural(daysLeft, "day")} left</span>
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center justify-between gap-4">
+              <p className="text-sm text-on-surface-variant">No monthly budget set yet.</p>
+              <Link href="/budgets" className="rounded-full bg-primary px-4 py-2 text-sm font-medium text-on-primary">
+                Set budget
+              </Link>
+            </div>
+          )}
+        </section>
+
+        {/* Quick actions */}
+        <section>
+          <h2 className="label-caps mb-3 px-1 text-on-surface-variant">Quick Actions</h2>
+          <div className="grid grid-cols-4 gap-2">
+            {quickActions.map(({ label, icon: Icon, href, accent }) => (
+              <Link
+                key={label}
+                href={href}
+                className="card flex flex-col items-center gap-2 px-1 py-4 text-center text-sm transition hover:-translate-y-0.5"
+              >
+                <span
+                  className={`grid size-12 place-items-center rounded-full ${
+                    accent ? "bg-primary-fixed/50 text-primary" : "bg-surface-container-high"
+                  }`}
+                >
+                  <Icon className="size-5" aria-hidden />
+                </span>
+                {label}
+              </Link>
+            ))}
+          </div>
+        </section>
+
+        {/* Recent transactions */}
+        <section>
+          <div className="mb-2 flex items-center justify-between px-1">
+            <h2 className="text-[22px] font-semibold tracking-tight">Recent Transactions</h2>
+            {transactions.length > 0 && (
+              <Link href="/accounts" className="flex items-center text-sm font-medium text-primary">
+                View All <ChevronRight className="size-4" aria-hidden />
+              </Link>
+            )}
+          </div>
+          {transactions.length === 0 ? (
+            <EmptyState
+              icon={ReceiptText}
+              title="No transactions yet"
+              body="Add your first expense or income and it will show up here."
+              action={
+                <Link href="/add" className="rounded-full bg-primary px-5 py-2.5 font-medium text-on-primary">
+                  Add transaction
+                </Link>
+              }
+            />
+          ) : (
+            [...groups].map(([day, list]) => {
+              const dayNet = net(list);
+              return (
+                <div key={day} className="mt-4">
+                  <div className="label-caps mb-2 flex justify-between px-1 text-on-surface-variant">
+                    <span>{day}</span>
+                    <span className={`font-mono normal-case ${dayNet > 0 ? "text-primary" : ""}`}>
+                      {dayNet < 0 ? "-" : "+"}
+                      {money(dayNet)}
+                      {dayNet > 0 && " net"}
+                    </span>
+                  </div>
+                  <ul className="card divide-y divide-surface-container px-5">
+                    {list.map((t) => (
+                      <TransactionRow key={t.id} t={t} />
+                    ))}
+                  </ul>
+                </div>
+              );
+            })
+          )}
+        </section>
+
+        {tipOpen && insight && (
+          <aside className="flex items-center gap-4 rounded-xl bg-surface-container-low p-5">
+            <span className="grid size-12 shrink-0 place-items-center rounded-full bg-primary-fixed/60 text-primary">
+              <Lightbulb className="size-5" aria-hidden />
+            </span>
+            <p className="flex-1 text-sm">
+              You&apos;re spending{" "}
+              <span className={`font-medium ${insight.pct < 0 ? "text-primary" : "text-secondary"}`}>
+                {Math.abs(Math.round(insight.pct))}% {insight.pct < 0 ? "less" : "more"}
+              </span>{" "}
+              on {categories[insight.category].long.toLowerCase()} than last month.
+            </p>
+            <button aria-label="Dismiss tip" onClick={() => setTipOpen(false)} className="p-1">
+              <X className="size-5" />
+            </button>
+          </aside>
+        )}
+      </TabPage>
+    </>
+  );
+}
+
+function Metric({
+  icon: Icon,
+  label,
+  value,
+  tone,
+  title,
+}: {
+  icon: typeof ArrowDown;
+  label: string;
+  value: string;
+  tone: "primary" | "secondary" | "neutral";
+  title?: string;
+}) {
+  const color = { primary: "text-primary", secondary: "text-secondary", neutral: "text-on-surface" }[tone];
+  return (
+    <div title={title} className="flex flex-col justify-between rounded-lg bg-surface-container-low p-2.5">
+      <div className={`flex items-center gap-1 ${tone === "neutral" ? "text-on-surface-variant" : color}`}>
+        <Icon className="size-3.5" aria-hidden />
+        <span className="text-[11px] font-medium text-on-surface-variant">{label}</span>
+      </div>
+      <span className={`truncate pt-1 font-mono text-xs font-semibold ${color}`}>{value}</span>
     </div>
   );
 }
