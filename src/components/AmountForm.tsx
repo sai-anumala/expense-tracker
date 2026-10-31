@@ -46,7 +46,7 @@ export function AmountForm({
           }
         }}
       >
-        <label className="flex min-w-0 flex-1 items-center gap-1 rounded-lg bg-surface-container-low px-3 py-2 font-mono">
+        <label className="flex min-w-0 flex-1 items-center gap-1 rounded-lg bg-surface-container-low px-3 py-2 tabular-nums">
           <span className="text-outline">{CURRENCY_SYMBOL}</span>
           <input
             aria-label={label}

@@ -51,7 +51,7 @@ There is **no mock or sample data** anywhere: every number comes from the signed
 |---|---|---|
 | Framework | **Next.js 15.5.x** (App Router, TypeScript strict) | Must stay ≥ 15.5.28. Vercel **refuses to deploy** vulnerable versions |
 | UI | React 19.1.x, **Tailwind CSS v4** (CSS-first `@theme`, no `tailwind.config`) | Icons: `lucide-react` |
-| Fonts | Hanken Grotesk (text), JetBrains Mono (numbers) via `next/font/google` | CSS vars `--font-hanken`, `--font-jetbrains` set on `<html>` |
+| Fonts | Hanken Grotesk (text **and numbers**, with `tabular-nums`) via `next/font/google`; JetBrains Mono still loaded but only used for the error ref code | CSS vars `--font-hanken`, `--font-jetbrains` set on `<html>` |
 | DB | **MongoDB Atlas** via **Mongoose 8.x** | DB name `ledgerly` |
 | Auth | Custom: **bcryptjs** (cost 12) + **jose** JWT (HS256) in httpOnly cookie | No third-party auth provider |
 | Hosting | **Vercel** (Hobby), GitHub integration | |
@@ -361,7 +361,7 @@ Tokens are defined in `src/app/globals.css` under `@theme` and used as Tailwind 
 | Radii | `sm .25rem`, default `.5rem`, `md .75rem`, `lg 1rem`, `xl 1.5rem` | |
 
 - Utilities: `label-caps` (11px, 600, 0.06em, uppercase), `card` (white, rounded-xl, soft shadow).
-- Numbers/amounts use `font-mono` (JetBrains Mono), **except** transaction-row amounts and the Monthly Budget card (app font + `tabular-nums`) and the big figures: the balance hero (36px bold, cents in `on-surface-variant`, two blurred glow blobs) and the **Add/Edit amount input** (Hanken Grotesk `text-5xl font-bold tabular-nums`, ₹ in `text-outline`).
+- **All numbers/amounts use the app font (Hanken Grotesk) with `tabular-nums`** (even-width digits); `font-mono`/JetBrains Mono is no longer used for numbers (only the error reference code). Big figures: balance hero 36px bold (cents in `on-surface-variant`, two blurred glow blobs); Add/Edit amount input `text-5xl font-bold` (₹ in `text-outline`).
 - Layout: single centered column `max-w-md`; light theme only.
 
 ---
@@ -451,6 +451,7 @@ For isolated tests use a **temporary local MongoDB** (`mongod --dbpath <tmp> --p
 | 2026-10-31 | Transfer tab, Subscriptions, Suggested Match removed | No real data source |
 | 2026-10-31 | `develop` → preview, `main` → production; shared DB | User choice (separate dev DB declined) |
 | 2026-10-31 | Payment defaults to UPI; date picker is a compact centered pop-up | User request |
+| 2026-10-31 | Numbers use Hanken Grotesk + `tabular-nums` everywhere instead of JetBrains Mono | User feedback: mono digits (e.g. "5,000.00") looked off |
 | 2026-10-31 | Transaction rows: swipe-left actions (View/Edit/Delete) instead of tap-to-edit; tap also toggles for desktop/accessibility | User request |
 | 2026-10-31 | Added real categories home, fuel, friend, rent, education, gifts, personal behind a "Show more" tile (Other moved there). A short-lived `subcategory` field was removed (no data used it) | User request: categories only, no sub-levels; they work in budgets and analytics too |
 | 2026-10-31 | Balance is anchored in time: only transactions dated ≥ `balanceAsOf` change it; anchor truncated to the minute; legacy docs fall back to `updatedAt` | User request. Fixes double-counting when a user enters their current balance after already logging transactions |

@@ -105,7 +105,7 @@ export default function Budgets() {
               <p className="flex items-center gap-2 text-sm text-on-surface-variant">
                 <span className="size-2 rounded-full bg-primary" /> Spent so far
               </p>
-              <p className="mt-1 font-mono text-xl font-semibold">{money(spent)}</p>
+              <p className="mt-1 tabular-nums text-xl font-semibold">{money(spent)}</p>
               {limit > 0 && (
                 <p className="text-xs text-on-surface-variant">{((spent / limit) * 100).toFixed(1)}% utilized</p>
               )}
@@ -114,7 +114,7 @@ export default function Budgets() {
               <p className="flex items-center gap-2 text-sm text-on-surface-variant">
                 <span className="size-2 rounded-full bg-surface-dim" /> Remaining
               </p>
-              <p className={`mt-1 font-mono text-xl font-semibold ${remaining < 0 ? "text-secondary" : "text-primary"}`}>
+              <p className={`mt-1 tabular-nums text-xl font-semibold ${remaining < 0 ? "text-secondary" : "text-primary"}`}>
                 {limit > 0 ? `${remaining < 0 ? "-" : ""}${money(remaining)}` : "—"}
               </p>
               {limit > 0 && (
@@ -134,7 +134,7 @@ export default function Budgets() {
                   <CircleCheck className="size-4 text-primary" aria-hidden />
                   {money(Math.max(0, remaining) / daysLeft)} safe daily budget
                 </span>
-                <span className="font-mono">{Math.round((spent / limit) * 100)}% Spent</span>
+                <span className="tabular-nums">{Math.round((spent / limit) * 100)}% Spent</span>
               </div>
             </>
           )}
@@ -177,7 +177,7 @@ export default function Budgets() {
                       </div>
                       <div className="text-right">
                         <p>
-                          <span className="font-mono text-lg font-semibold">{money(catSpent)}</span>
+                          <span className="tabular-nums text-lg font-semibold">{money(catSpent)}</span>
                           <span className="text-sm text-on-surface-variant"> / {money(b.limit)}</span>
                         </p>
                         <span

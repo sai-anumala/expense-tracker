@@ -69,7 +69,7 @@ export default function Analytics() {
             </p>
             {change !== null && (
               <span
-                className={`flex items-center gap-1 rounded-full bg-surface-container px-3 py-1 font-mono text-sm font-semibold ${
+                className={`flex items-center gap-1 rounded-full bg-surface-container px-3 py-1 tabular-nums text-sm font-semibold ${
                   change <= 0 ? "text-primary" : "text-secondary"
                 }`}
               >
@@ -80,7 +80,7 @@ export default function Analytics() {
           </div>
           <div className="mt-3 flex justify-between gap-3 text-sm">
             <span className="text-on-surface-variant">
-              Previous {range}: <b className="font-mono text-on-surface">{money(prevTotal)}</b>
+              Previous {range}: <b className="tabular-nums text-on-surface">{money(prevTotal)}</b>
             </span>
             {monthBudgetDelta !== null && (
               <span className={monthBudgetDelta >= 0 ? "text-primary" : "text-secondary"}>
@@ -125,7 +125,7 @@ export default function Analytics() {
                 <div className="absolute inset-0 grid place-content-center px-8 text-center">
                   <p className="label-caps text-on-surface-variant">Top Category</p>
                   <p className="text-xl font-semibold">{categories[breakdown[0].category].long}</p>
-                  <p className="font-mono text-primary">
+                  <p className="tabular-nums text-primary">
                     {Math.round((breakdown[0].amount / total) * 100)}% ({money(breakdown[0].amount)})
                   </p>
                 </div>
@@ -135,7 +135,7 @@ export default function Analytics() {
                   <li key={c.category} className="flex items-center gap-2 rounded-lg bg-surface-container-low px-3 py-2">
                     <span className="size-2.5 shrink-0 rounded-full" style={{ background: categories[c.category].color }} />
                     <span className="min-w-0 flex-1 truncate">{categories[c.category].long}</span>
-                    <span className="font-mono font-medium">{money(c.amount)}</span>
+                    <span className="tabular-nums font-medium">{money(c.amount)}</span>
                   </li>
                 ))}
               </ul>
@@ -156,7 +156,7 @@ export default function Analytics() {
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="font-mono font-semibold">-{money(m.amount)}</p>
+                      <p className="tabular-nums font-semibold">-{money(m.amount)}</p>
                       <p className="text-xs text-on-surface-variant">{Math.round((m.amount / total) * 100)}% of total</p>
                     </div>
                   </li>
@@ -244,7 +244,7 @@ function WeeklyBars({ weeks, target }: { weeks: { start: Date; amount: number; c
           className="absolute inset-x-0 border-t border-dashed border-outline-variant"
           style={{ bottom: 28 + (target / max) * h }}
         >
-          <span className="absolute -top-2.5 -left-1 rounded bg-surface-container px-1.5 font-mono text-[11px] text-on-surface-variant">
+          <span className="absolute -top-2.5 -left-1 rounded bg-surface-container px-1.5 tabular-nums text-[11px] text-on-surface-variant">
             {moneyWhole(target)}
           </span>
         </div>
@@ -255,7 +255,7 @@ function WeeklyBars({ weeks, target }: { weeks: { start: Date; amount: number; c
             {w.current && (
               <span className="rounded bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-on-primary">Now</span>
             )}
-            <span className={`font-mono text-xs ${w.current ? "font-semibold text-primary" : "text-on-surface-variant"}`}>
+            <span className={`tabular-nums text-xs ${w.current ? "font-semibold text-primary" : "text-on-surface-variant"}`}>
               {moneyWhole(w.amount)}
             </span>
             <div

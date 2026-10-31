@@ -191,7 +191,7 @@ function PickerSheet({
                   onClick={() => pickDay(d)}
                   aria-pressed={sameDay(d, draft)}
                   aria-label={d.toDateString()}
-                  className={`mx-auto my-px grid size-8 place-items-center rounded-full font-mono text-xs transition disabled:opacity-25 ${
+                  className={`mx-auto my-px grid size-8 place-items-center rounded-full tabular-nums text-xs transition disabled:opacity-25 ${
                     sameDay(d, draft)
                       ? "bg-primary font-semibold text-on-primary"
                       : sameDay(d, now)
@@ -218,7 +218,7 @@ function PickerSheet({
               options={Array.from({ length: 12 }, (_, i) => i + 1)}
               onChange={(h) => setTime(h, draft.getMinutes(), pm)}
             />
-            <span className="font-mono text-base font-semibold">:</span>
+            <span className="tabular-nums text-base font-semibold">:</span>
             <TimeSelect
               label="Minute"
               value={draft.getMinutes()}
@@ -276,7 +276,7 @@ function TimeSelect({
       aria-label={label}
       value={value}
       onChange={(e) => onChange(Number(e.target.value))}
-      className="appearance-none rounded-lg bg-surface-container px-2 py-1 text-center font-mono text-base font-semibold outline-none focus:ring-2 focus:ring-primary"
+      className="appearance-none rounded-lg bg-surface-container px-2 py-1 text-center tabular-nums text-base font-semibold outline-none focus:ring-2 focus:ring-primary"
     >
       {options.map((o) => (
         <option key={o} value={o}>

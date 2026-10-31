@@ -44,7 +44,7 @@ export default function Accounts() {
                     >
                       <IconTile icon={Wallet} tone={filter === name ? "primary" : "neutral"} />
                       <span className="flex-1 font-semibold">{name}</span>
-                      <span className={`font-mono font-semibold ${amount < 0 ? "text-secondary" : "text-primary"}`}>
+                      <span className={`tabular-nums font-semibold ${amount < 0 ? "text-secondary" : "text-primary"}`}>
                         {amount < 0 ? "-" : "+"}
                         {money(amount)}
                       </span>

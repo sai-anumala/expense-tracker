@@ -167,7 +167,7 @@ function AddTransaction() {
               style={{ width: `${Math.max(4, amount.length) + 0.5}ch` }}
             />
           </div>
-          <div className="mt-4 flex justify-center gap-2 font-mono text-sm">
+          <div className="mt-4 flex justify-center gap-2 tabular-nums text-sm">
             {[100, 500, 1000].map((n) => (
               <button key={n} onClick={() => bump(n)} className="rounded-full bg-surface-container px-4 py-1.5">
                 +{moneyWhole(n)}
@@ -272,7 +272,7 @@ function AddTransaction() {
           <span className="flex-1 text-left text-xl font-semibold capitalize">
             {saving && !isEdit ? "Saving…" : isEdit ? "Save changes" : `Save ${kind}`}
           </span>
-          <span className="rounded-full bg-primary-container px-4 py-1 font-mono text-lg">{money(value)}</span>
+          <span className="rounded-full bg-primary-container px-4 py-1 tabular-nums text-lg">{money(value)}</span>
         </button>
 
         {isEdit && (
@@ -291,7 +291,7 @@ function AddTransaction() {
           message={
             <>
               It will be updated to <b className="text-on-surface">{note.trim() || categoryLabel}</b>,{" "}
-              <b className="font-mono text-on-surface">
+              <b className="tabular-nums text-on-surface">
                 {kind === "income" ? "+" : "-"}
                 {money(value)}
               </b>

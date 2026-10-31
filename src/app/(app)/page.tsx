@@ -281,7 +281,7 @@ export default function Dashboard() {
                 <div key={day} className="mt-4">
                   <div className="label-caps mb-2 flex justify-between px-1 text-on-surface-variant">
                     <span>{day}</span>
-                    <span className={`font-mono normal-case ${dayNet > 0 ? "text-primary" : ""}`}>
+                    <span className={`tabular-nums normal-case ${dayNet > 0 ? "text-primary" : ""}`}>
                       {dayNet < 0 ? "-" : "+"}
                       {money(dayNet)}
                       {dayNet > 0 && " net"}
@@ -340,7 +340,7 @@ function Metric({
         <Icon className="size-3.5" aria-hidden />
         <span className="text-[11px] font-medium text-on-surface-variant">{label}</span>
       </div>
-      <span className={`truncate pt-1 font-mono text-xs font-semibold ${color}`}>{value}</span>
+      <span className={`truncate pt-1 text-[13px] font-semibold tabular-nums ${color}`}>{value}</span>
     </div>
   );
 }
