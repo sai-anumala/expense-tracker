@@ -6,6 +6,13 @@ import {
   Clapperboard,
   Zap,
   Heart,
+  House,
+  Fuel,
+  HandCoins,
+  Building2,
+  GraduationCap,
+  Gift,
+  Sparkles,
   MoreHorizontal,
   Laptop,
   Banknote,
@@ -22,6 +29,13 @@ export type CategoryId =
   | "fun"
   | "bills"
   | "health"
+  | "home"
+  | "fuel"
+  | "friend"
+  | "rent"
+  | "education"
+  | "gifts"
+  | "personal"
   | "other"
   | "hardware"
   | "income";
@@ -37,45 +51,34 @@ export const categories: Record<
   transport: { label: "Transport", long: "Transportation", icon: Car, tone: "neutral", color: "var(--color-tertiary)" },
   shopping: { label: "Shopping", long: "Shopping", icon: ShoppingBag, tone: "tertiary", color: "var(--color-secondary)" },
   fun: { label: "Fun & Subs", long: "Entertainment", icon: Clapperboard, tone: "tertiary", color: "var(--color-secondary-container)" },
-  bills: { label: "Bills", long: "Utilities & Bills", icon: Zap, tone: "neutral", color: "var(--color-tertiary-fixed-dim)" },
+  bills: { label: "Bills", long: "Utilities & Bills", icon: Zap, tone: "neutral", color: "#ffb778" },
   health: { label: "Health", long: "Health", icon: Heart, tone: "neutral", color: "var(--color-primary-container)" },
+  home: { label: "Sending home", long: "Sending home", icon: House, tone: "primary", color: "#3b6fb6" },
+  fuel: { label: "Fuel", long: "Fuel", icon: Fuel, tone: "tertiary", color: "#b5651d" },
+  friend: { label: "Sent to friend", long: "Sent to friend", icon: HandCoins, tone: "neutral", color: "#7a5cc7" },
+  rent: { label: "Rent", long: "Rent", icon: Building2, tone: "neutral", color: "#4d7c0f" },
+  education: { label: "Education", long: "Education", icon: GraduationCap, tone: "primary", color: "#0e7490" },
+  gifts: { label: "Gifts", long: "Gifts & donations", icon: Gift, tone: "tertiary", color: "#be185d" },
+  personal: { label: "Personal care", long: "Personal care", icon: Sparkles, tone: "neutral", color: "#a16207" },
   other: { label: "Other", long: "Other", icon: MoreHorizontal, tone: "neutral", color: "var(--color-outline-variant)" },
   hardware: { label: "Hardware", long: "Hardware", icon: Laptop, tone: "neutral", color: "var(--color-outline)" },
   income: { label: "Income", long: "Income", icon: Banknote, tone: "primary", color: "var(--color-primary)" },
 };
 
-/** Expense categories selectable when adding a transaction or a budget. */
-export const pickableCategories: CategoryId[] = [
-  "food",
-  "groceries",
-  "transport",
-  "shopping",
-  "fun",
-  "bills",
-  "health",
-  "other",
-];
+/** Shown first on the Add screen (the 8th tile is "Show more"). */
+export const primaryCategories: CategoryId[] = ["food", "groceries", "transport", "shopping", "fun", "bills", "health"];
+
+/** Revealed by "Show more", ending with "Other". */
+export const moreCategories: CategoryId[] = ["home", "fuel", "friend", "rent", "education", "gifts", "personal", "other"];
+
+/** All expense categories selectable when adding a transaction or a budget. */
+export const pickableCategories: CategoryId[] = [...primaryCategories, ...moreCategories];
 
 /** Payment methods offered on the Add screen. */
 export const paymentMethods = ["UPI", "Cash", "Debit Card", "Credit Card", "Bank Transfer"];
 
 /** Pre-selected payment method for new transactions. */
 export const DEFAULT_PAYMENT_METHOD = "UPI";
-
-/**
- * Quick sub-options shown when the "Other" category is selected. The user can also type their own
- * (stored in `subcategory`). Keep MAX_SUBCATEGORY_LENGTH in sync with lib/transactionInput.ts.
- */
-export const otherSubcategories = [
-  "Sending home",
-  "Fuel",
-  "Sent to friend",
-  "Rent",
-  "Education",
-  "Gifts & donations",
-  "Personal care",
-];
-export const MAX_SUBCATEGORY_LENGTH = 40;
 
 export type Transaction = {
   id: string;
@@ -85,14 +88,7 @@ export type Transaction = {
   amount: number;
   date: string; // ISO
   account?: string;
-  /** Only for category "other": a preset from otherSubcategories or user-typed text. */
-  subcategory?: string;
 };
-
-/** Display name for a transaction's category ("Fuel" for other+Fuel, else the category's long name). */
-export function categoryName(t: Pick<Transaction, "category" | "subcategory">) {
-  return (t.category === "other" && t.subcategory) || (categories[t.category] ?? categories.other).long;
-}
 
 export type Budget = {
   /** Overall monthly spending limit; 0 = not set. */

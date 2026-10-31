@@ -190,7 +190,7 @@ src/
 │  └─ UserMenu.tsx               Initials avatar → menu (name, email, Log out); initials()
 ├─ lib/
 │  ├─ store.tsx      (client)    TransactionsProvider, useAppData, api() fetch helper, ApiError, errorMessage()
-│  ├─ data.ts                    Categories, otherSubcategories, paymentMethods + DEFAULT_PAYMENT_METHOD, categoryName(), types, empty defaults
+│  ├─ data.ts                    Categories (+ primaryCategories / moreCategories), paymentMethods + DEFAULT_PAYMENT_METHOD, types, empty defaults
 │  ├─ insights.ts                Pure calc helpers: periodBounds, within, totals, spentByCategory, topMerchants, weeklySpend, categoryInsight, anchoredBalance
 │  ├─ format.ts                  money (₹, en-IN), moneyWhole, signedMoney, timeOf, monthLabel, daysLeftInMonth, plural, dayBucket
 │  ├─ db.ts          (server)    connectDb() with global cached connection; isDbConfigured()
@@ -223,11 +223,10 @@ All schemas use `timestamps: true` and `strict: "throw"` (unknown fields throw �
 |---|---|---|
 | `userId` | ObjectId → User | required, indexed. **Every query filters on it** |
 | `merchant` | String | required, ≤ 120 (note/merchant/source; defaults to category name) |
-| `category` | enum | `food, groceries, transport, shopping, fun, bills, health, other, hardware, income` |
+| `category` | enum | `food, groceries, transport, shopping, fun, bills, health, home (Sending home), fuel, friend (Sent to friend), rent, education, gifts (Gifts & donations), personal (Personal care), other, hardware (legacy), income` |
 | `amount` | Number | **expense < 0, income > 0**, never 0, \|x\| ≤ 1e10, rounded to paise |
 | `date` | Date | indexed; not in the future (5 min tolerance) |
 | `account` | String | optional payment method, ≤ 80 (`UPI` (default), `Cash, Debit Card, Credit Card, Bank Transfer`) |
-| `subcategory` | String | optional, **only when `category = "other"`**, ≤ 40, whitespace collapsed. A preset from `otherSubcategories` (Sending home, Fuel, Sent to friend, Rent, Education, Gifts & donations, Personal care) or user-typed text. Shown instead of "Other" via `categoryName()` |
 | `receiptName` | String | optional file name only (files are **not** uploaded) |
 
 **`budgets`** (`Budget`): one document per user
@@ -272,7 +271,7 @@ All bodies are JSON objects; non-object or invalid JSON → **400**. Mongoose `V
 | `GET /api/settings` | session | – | `{openingBalance, balanceAsOf}` (ISO or null) | – |
 | `PUT /api/settings` | session | `{openingBalance: number ≥ 0 \| null}` | 200 `{openingBalance, balanceAsOf}`; server sets `balanceAsOf` = now (to the minute), or null when clearing | 400 |
 
-`Transaction` DTO: `{ id, merchant, category, amount, date, account?, subcategory? }`. Sending `subcategory` with a category other than `other` → 400; omitting it on PUT removes it.
+`Transaction` DTO: `{ id, merchant, category, amount, date, account? }`. Unknown body fields (e.g. an old `subcategory`) are ignored.
 Validation lives in `lib/transactionInput.ts` (transactions), `lib/authInput.ts` (auth), and inline in budget/settings routes. **Server validation is authoritative**; client checks are UX only.
 
 ---
@@ -333,7 +332,7 @@ Reference scenario (from the spec): budget 3,000, spent 1,830.40 → Remaining 1
 ## 12. Screens & UX behaviour
 
 - **Add / Edit** (`/add`, `/add?id=…`, `/add?kind=income`): Expense/Income tabs (no Transfer), amount with +₹100/+₹500/+₹1,000 chips (2-decimal max), category grid (expense only), DateTimePicker, payment method select (**defaults to UPI**), note/merchant (≤ 120), receipt file **name only**.
-  - Selecting **Other** expands an optional chip row of `otherSubcategories` plus an **Other ✎** chip that reveals a text field (≤ 40 chars, counter) for a custom category name. Tapping a selected chip clears it. Custom chosen but empty → save is blocked with a message. If the note is empty, the merchant defaults to the subcategory name.
+  - Category grid (4 columns): first shows `primaryCategories` (Food, Groceries, Transport, Shopping, Fun & Subs, Bills, Health) + a dashed **Show more** tile. Show more expands the same grid with `moreCategories` (Sending home, Fuel, Sent to friend, Rent, Education, Gifts, Personal care, **Other**) and the tile becomes **Show less**. Opens expanded when editing a transaction whose category is in `moreCategories`. No free-text categories (use the note).
   - New → saves immediately. **Edit → "Save changes?" confirm (Yes/Cancel). Delete → danger confirm.** On success → `/`.
   - Unknown/foreign id → "Transaction not found" screen.
 - **DateTimePicker:** field shows "Today, 2:45 PM" / "Yesterday, …" / "Fri, 24 Oct, …"; tapping opens a **compact centered pop-up** (max 20rem wide, 1rem margin on phones) with preview, Now/Yesterday/2 days ago, Monday-first calendar, hour/minute/AM-PM; future days and times disabled; Done/Cancel; Esc or backdrop tap closes.
@@ -373,7 +372,7 @@ Tokens are defined in `src/app/globals.css` under `@theme` and used as Tailwind 
 4. **API responses** use `ok()` / `fail()` / `dbErrorResponse()` from `lib/api.ts`; validate with explicit, human-readable messages; wrap DB calls in try/catch.
 5. **Amounts:** sign encodes type (expense < 0); round with `toPaise`; display with `money()`/`signedMoney()`/`moneyWhole()` (INR, `en-IN`). Never hardcode `₹` or `$`; use `CURRENCY_SYMBOL`.
 6. **Destructive or modifying actions on existing records require a confirm dialog** (`ConfirmDialog`).
-7. Categories, `otherSubcategories`, payment methods and `DEFAULT_PAYMENT_METHOD` are defined once in `lib/data.ts` (keep `CATEGORY_IDS` in `models/Transaction.ts` and `MAX_SUBCATEGORY_LENGTH` in `lib/transactionInput.ts` in sync). Display a transaction's category with `categoryName(t)`.
+7. Categories (`categories`, `primaryCategories`, `moreCategories`, `pickableCategories`), payment methods and `DEFAULT_PAYMENT_METHOD` are defined once in `lib/data.ts`. Keep `CATEGORY_IDS` in `models/Transaction.ts` in sync. Adding a category = add it to `CategoryId`, `categories` (label, long name, icon, tone, chart color), one of the two lists, and `CATEGORY_IDS`.
 8. Keep `MAX_AMOUNT` (1e10) in sync: `lib/api.ts`, `components/AmountForm.tsx`, `app/(app)/add/page.tsx`.
 9. Client pages use `useAppData()`; don't fetch directly from pages.
 10. Before pushing: `npx tsc --noEmit`, `npm run lint`, and a production build (see [§16](#16-testing--verification)).
@@ -449,7 +448,8 @@ For isolated tests use a **temporary local MongoDB** (`mongod --dbpath <tmp> --p
 | 2026-10-31 | Dashboard balance = opening + all income − all spending; tiles are this month; "To Spend" renamed "Remaining" | Product spec (Sarah scenario). A brief switch to "Income − Spent + Remaining" was reverted |
 | 2026-10-31 | Transfer tab, Subscriptions, Suggested Match removed | No real data source |
 | 2026-10-31 | `develop` → preview, `main` → production; shared DB | User choice (separate dev DB declined) |
-| 2026-10-31 | "Other" gets optional sub-options + free-text `subcategory`; payment defaults to UPI; date picker is a compact centered pop-up | User request. Budgets and analytics stay on main categories (Other is one bucket) |
+| 2026-10-31 | Payment defaults to UPI; date picker is a compact centered pop-up | User request |
+| 2026-10-31 | Added real categories home, fuel, friend, rent, education, gifts, personal behind a "Show more" tile (Other moved there). A short-lived `subcategory` field was removed (no data used it) | User request: categories only, no sub-levels; they work in budgets and analytics too |
 | 2026-10-31 | Balance is anchored in time: only transactions dated ≥ `balanceAsOf` change it; anchor truncated to the minute; legacy docs fall back to `updatedAt` | User request. Fixes double-counting when a user enters their current balance after already logging transactions |
 | 2026-10-31 | Upgraded Next 15.5.28 / React 19.1.10 / Mongoose 8.24.x | Security advisories; Vercel deploy block |
 
@@ -465,5 +465,4 @@ For isolated tests use a **temporary local MongoDB** (`mongod --dbpath <tmp> --p
 - Transactions list capped at 1000 per user (no pagination).
 - Shared DB across preview/dev/prod (see §5).
 - No account deletion or profile edit UI.
-- Analytics/budgets treat all "Other" subcategories as one bucket (no per-subcategory breakdown).
 - Cleanup pending: test user `test.user@ledgerly-demo.dev`; legacy `settings` doc `key:"default"`.

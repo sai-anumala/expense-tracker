@@ -8,11 +8,8 @@ export type TransactionInput = {
   amount: number;
   date: Date;
   account?: string;
-  subcategory?: string;
   receiptName?: string;
 };
-
-const MAX_SUBCATEGORY_LENGTH = 40; // keep in sync with lib/data.ts
 
 /** Allow a little clock skew between browser and server. */
 const FUTURE_TOLERANCE_MS = 5 * 60 * 1000;
@@ -40,15 +37,9 @@ export function parseTransactionInput(
 
   const account = typeof body.account === "string" && body.account.trim() ? body.account.trim() : undefined;
   if (account && account.length > 80) return { ok: false, error: "Payment method name is too long." };
-  const rawSub = typeof body.subcategory === "string" ? body.subcategory.trim().replace(/\s+/g, " ") : "";
-  if (rawSub && category !== "other") return { ok: false, error: "A custom category can only be used with Other." };
-  if (rawSub.length > MAX_SUBCATEGORY_LENGTH)
-    return { ok: false, error: `Category name must be ${MAX_SUBCATEGORY_LENGTH} characters or fewer.` };
-  const subcategory = rawSub || undefined;
-
   const receiptName = typeof body.receiptName === "string" && body.receiptName ? body.receiptName.slice(0, 200) : undefined;
 
-  return { ok: true, value: { merchant, category, amount: toPaise(amount), date, account, subcategory, receiptName } };
+  return { ok: true, value: { merchant, category, amount: toPaise(amount), date, account, receiptName } };
 }
 
 type Lean = {
@@ -58,7 +49,6 @@ type Lean = {
   amount: number;
   date: Date;
   account?: string | null;
-  subcategory?: string | null;
 };
 
 export const toTransactionDto = (d: Lean) => ({
@@ -68,5 +58,4 @@ export const toTransactionDto = (d: Lean) => ({
   amount: d.amount,
   date: new Date(d.date).toISOString(),
   account: d.account ?? undefined,
-  subcategory: d.subcategory ?? undefined,
 });

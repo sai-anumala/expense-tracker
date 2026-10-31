@@ -31,11 +31,8 @@ export async function PUT(req: Request, { params }: Params) {
     await connectDb();
     const { receiptName, ...fields } = input.value;
     const update: Record<string, unknown> = { $set: receiptName ? { ...fields, receiptName } : fields };
-    // Clear optional fields that were removed; keep an existing receipt unless a new one was attached.
-    const unset: Record<string, 1> = {};
-    if (!fields.account) unset.account = 1;
-    if (!fields.subcategory) unset.subcategory = 1;
-    if (Object.keys(unset).length) update.$unset = unset;
+    // Clear the payment method if it was removed; keep an existing receipt unless a new one was attached.
+    if (!fields.account) update.$unset = { account: 1 };
     const doc = await TransactionModel.findOneAndUpdate({ _id: id, userId: user.userId }, update, {
       new: true,
       runValidators: true,

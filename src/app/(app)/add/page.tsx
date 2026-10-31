@@ -11,7 +11,8 @@ import {
   NotebookPen,
   ImagePlus,
   CircleCheck,
-  PencilLine,
+  ChevronsDown,
+  ChevronsUp,
   Trash2,
 } from "lucide-react";
 import { UserMenu } from "@/components/UserMenu";
@@ -19,11 +20,10 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { DateTimePicker } from "@/components/DateTimePicker";
 import {
   DEFAULT_PAYMENT_METHOD,
-  MAX_SUBCATEGORY_LENGTH,
   categories,
-  otherSubcategories,
   paymentMethods,
-  pickableCategories,
+  moreCategories,
+  primaryCategories,
   type CategoryId,
 } from "@/lib/data";
 import { errorMessage, useAppData } from "@/lib/store";
@@ -32,8 +32,6 @@ import { CURRENCY_SYMBOL, money, moneyWhole } from "@/lib/format";
 
 type Kind = "expense" | "income";
 
-/** Sentinel for the "Other" chip that reveals a free-text category field. */
-const CUSTOM = "__custom__";
 
 const MAX_AMOUNT = 10_000_000_000; // keep in sync with src/lib/api.ts
 
@@ -65,12 +63,8 @@ function AddTransaction() {
   );
   const [when, setWhen] = useState(() => (existing ? new Date(existing.date) : new Date()));
   const [account, setAccount] = useState(existing?.account ?? DEFAULT_PAYMENT_METHOD);
-  // "Other" category: a preset sub-option, CUSTOM (user types a name), or null (plain "Other").
-  const existingSub = existing?.category === "other" ? existing.subcategory : undefined;
-  const [subChoice, setSubChoice] = useState<string | null>(
-    existingSub ? (otherSubcategories.includes(existingSub) ? existingSub : CUSTOM) : null,
-  );
-  const [customSub, setCustomSub] = useState(existingSub && !otherSubcategories.includes(existingSub) ? existingSub : "");
+  // Extra categories are hidden behind "Show more" unless the selected one is among them (e.g. editing a Fuel expense).
+  const [showMore, setShowMore] = useState(() => moreCategories.includes(category));
   const [note, setNote] = useState(existing?.merchant ?? "");
   const [receipt, setReceipt] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -82,15 +76,11 @@ function AddTransaction() {
   const bump = (n: number) => setAmount((value + n).toFixed(2));
   const accountOptions = paymentMethods.includes(account) ? paymentMethods : [account, ...paymentMethods];
 
-  const isOther = kind === "expense" && category === "other";
-  const subcategory = isOther ? (subChoice === CUSTOM ? customSub.trim() : (subChoice ?? "")) : "";
-  const customMissing = isOther && subChoice === CUSTOM && !customSub.trim();
-  const categoryLabel = subcategory || categories[category].long;
+  const categoryLabel = categories[category].long;
 
   const payload = () => ({
     merchant: note.trim() || (kind === "income" ? "Income" : categoryLabel),
     category: kind === "income" ? ("income" as const) : category,
-    subcategory: subcategory || undefined,
     amount: kind === "income" ? value : -value,
     date: when.toISOString(),
     account,
@@ -112,7 +102,6 @@ function AddTransaction() {
 
   function onSaveClick() {
     if (value <= 0 || tooLarge || saving) return;
-    if (customMissing) return setError("Enter a name for your category, or pick one of the options.");
     if (isEdit) setConfirm("save"); // edits need a "Yes" confirmation
     else run(() => add(payload()), "Could not save transaction.");
   }
@@ -201,7 +190,7 @@ function AddTransaction() {
               <span className="text-sm font-medium text-primary">{categoryLabel}</span>
             </div>
             <div className="grid grid-cols-4 gap-2">
-              {pickableCategories.map((id) => {
+              {(showMore ? [...primaryCategories, ...moreCategories] : primaryCategories).map((id) => {
                 const { label, icon: Icon } = categories[id];
                 const on = id === category;
                 return (
@@ -209,63 +198,24 @@ function AddTransaction() {
                     key={id}
                     aria-pressed={on}
                     onClick={() => setCategory(id)}
-                    className={`flex aspect-square flex-col items-center justify-center gap-2 rounded-xl text-sm transition ${
+                    className={`flex aspect-square flex-col items-center justify-center gap-1.5 rounded-xl px-1 text-center text-[13px] leading-tight transition ${
                       on ? "bg-primary text-on-primary" : "card hover:bg-surface-container-low"
                     }`}
                   >
-                    <Icon className="size-7" aria-hidden />
+                    <Icon className="size-6 shrink-0" aria-hidden />
                     {label}
                   </button>
                 );
               })}
+              <button
+                aria-expanded={showMore}
+                onClick={() => setShowMore((v) => !v)}
+                className="flex aspect-square flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-outline-variant px-1 text-center text-[13px] leading-tight font-medium text-primary transition hover:bg-surface-container-low"
+              >
+                {showMore ? <ChevronsUp className="size-6" aria-hidden /> : <ChevronsDown className="size-6" aria-hidden />}
+                {showMore ? "Show less" : "Show more"}
+              </button>
             </div>
-
-            {category === "other" && (
-              <div className="card mt-3 p-4">
-                <p className="label-caps mb-3 text-on-surface-variant">What kind of expense? (optional)</p>
-                <div className="flex flex-wrap gap-2">
-                  {[...otherSubcategories, CUSTOM].map((opt) => {
-                    const on = subChoice === opt;
-                    return (
-                      <button
-                        key={opt}
-                        aria-pressed={on}
-                        onClick={() => {
-                          setError(null);
-                          setSubChoice(on ? null : opt); // tap again to clear
-                        }}
-                        className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm transition ${
-                          on ? "bg-primary text-on-primary" : "bg-surface-container hover:bg-surface-container-high"
-                        }`}
-                      >
-                        {opt === CUSTOM && <PencilLine className="size-3.5" aria-hidden />}
-                        {opt === CUSTOM ? "Other" : opt}
-                      </button>
-                    );
-                  })}
-                </div>
-                {subChoice === CUSTOM && (
-                  <label className="mt-3 flex items-center gap-2 rounded-lg bg-surface-container-low px-4 py-3">
-                    <span className="sr-only">Category name</span>
-                    <input
-                      autoFocus
-                      value={customSub}
-                      maxLength={MAX_SUBCATEGORY_LENGTH}
-                      aria-invalid={customMissing}
-                      onChange={(e) => {
-                        setError(null);
-                        setCustomSub(e.target.value);
-                      }}
-                      placeholder="Enter category, e.g. Pet care"
-                      className="w-full bg-transparent text-lg outline-none placeholder:text-outline"
-                    />
-                    <span className="font-mono text-xs text-outline">
-                      {customSub.length}/{MAX_SUBCATEGORY_LENGTH}
-                    </span>
-                  </label>
-                )}
-              </div>
-            )}
           </section>
         )}
 

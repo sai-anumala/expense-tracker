@@ -5,7 +5,7 @@ import { CalendarDays, TrendingDown, TrendingUp, Lightbulb, Download, ChartSplin
 import { AppHeader, IconTile } from "@/components/ui";
 import { TabPage } from "@/components/BottomNav";
 import { EmptyState } from "@/components/TransactionRow";
-import { categories, categoryName, type Transaction } from "@/lib/data";
+import { categories, type Transaction } from "@/lib/data";
 import { useAppData } from "@/lib/store";
 import {
   categoryInsight,
@@ -191,7 +191,7 @@ function downloadCsv(list: Transaction[]) {
   const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
   const rows = [
     ["Date", "Merchant", "Category", "Account", "Amount (INR)"],
-    ...list.map((t) => [t.date, t.merchant, categoryName(t), t.account ?? "", t.amount.toFixed(2)]),
+    ...list.map((t) => [t.date, t.merchant, categories[t.category]?.long ?? t.category, t.account ?? "", t.amount.toFixed(2)]),
   ];
   const blob = new Blob([rows.map((r) => r.map(esc).join(",")).join("\n")], { type: "text/csv" });
   const a = document.createElement("a");
