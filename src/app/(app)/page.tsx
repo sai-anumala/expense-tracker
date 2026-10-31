@@ -51,7 +51,7 @@ export default function Dashboard() {
   const balanceAtMonthStart = (opening ?? 0) + net(transactions.filter((t) => new Date(t.date) < monthStart));
   const growth = balanceAtMonthStart > 0 ? ((balance - balanceAtMonthStart) / balanceAtMonthStart) * 100 : null;
 
-  // Triad row: this month's cash flow. To Spend = monthly budget cap − spent this month.
+  // Triad row: this month's cash flow. Remaining = monthly budget cap − spent this month.
   const income = totalIncome(thisMonth);
   const spent = totalSpent(thisMonth);
   const limit = budget.monthlyLimit;
@@ -155,13 +155,13 @@ export default function Dashboard() {
               <Metric icon={ArrowUp} label="Spent" value={`-${money(spent)}`} tone="secondary" />
               <Metric
                 icon={PiggyBank}
-                label="To Spend"
+                label="Remaining"
                 value={limit > 0 ? `${toSpend < 0 ? "-" : ""}${money(toSpend)}` : "—"}
                 tone={toSpend < 0 ? "secondary" : "neutral"}
                 title={
                   limit > 0
                     ? `${money(limit)} monthly budget − ${money(spent)} spent this month`
-                    : "Set a monthly budget to see what's safe to spend"
+                    : "Set a monthly budget to see how much is remaining"
                 }
               />
             </div>
