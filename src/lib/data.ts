@@ -57,7 +57,25 @@ export const pickableCategories: CategoryId[] = [
 ];
 
 /** Payment methods offered on the Add screen. */
-export const paymentMethods = ["Cash", "Debit Card", "Credit Card", "UPI", "Bank Transfer"];
+export const paymentMethods = ["UPI", "Cash", "Debit Card", "Credit Card", "Bank Transfer"];
+
+/** Pre-selected payment method for new transactions. */
+export const DEFAULT_PAYMENT_METHOD = "UPI";
+
+/**
+ * Quick sub-options shown when the "Other" category is selected. The user can also type their own
+ * (stored in `subcategory`). Keep MAX_SUBCATEGORY_LENGTH in sync with lib/transactionInput.ts.
+ */
+export const otherSubcategories = [
+  "Sending home",
+  "Fuel",
+  "Sent to friend",
+  "Rent",
+  "Education",
+  "Gifts & donations",
+  "Personal care",
+];
+export const MAX_SUBCATEGORY_LENGTH = 40;
 
 export type Transaction = {
   id: string;
@@ -67,7 +85,14 @@ export type Transaction = {
   amount: number;
   date: string; // ISO
   account?: string;
+  /** Only for category "other": a preset from otherSubcategories or user-typed text. */
+  subcategory?: string;
 };
+
+/** Display name for a transaction's category ("Fuel" for other+Fuel, else the category's long name). */
+export function categoryName(t: Pick<Transaction, "category" | "subcategory">) {
+  return (t.category === "other" && t.subcategory) || (categories[t.category] ?? categories.other).long;
+}
 
 export type Budget = {
   /** Overall monthly spending limit; 0 = not set. */

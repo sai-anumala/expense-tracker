@@ -11,17 +11,29 @@ import {
   NotebookPen,
   ImagePlus,
   CircleCheck,
+  PencilLine,
   Trash2,
 } from "lucide-react";
 import { UserMenu } from "@/components/UserMenu";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { DateTimePicker } from "@/components/DateTimePicker";
-import { categories, paymentMethods, pickableCategories, type CategoryId } from "@/lib/data";
+import {
+  DEFAULT_PAYMENT_METHOD,
+  MAX_SUBCATEGORY_LENGTH,
+  categories,
+  otherSubcategories,
+  paymentMethods,
+  pickableCategories,
+  type CategoryId,
+} from "@/lib/data";
 import { errorMessage, useAppData } from "@/lib/store";
 import { sanitizeAmount } from "@/components/AmountForm";
 import { CURRENCY_SYMBOL, money, moneyWhole } from "@/lib/format";
 
 type Kind = "expense" | "income";
+
+/** Sentinel for the "Other" chip that reveals a free-text category field. */
+const CUSTOM = "__custom__";
 
 const MAX_AMOUNT = 10_000_000_000; // keep in sync with src/lib/api.ts
 
@@ -52,7 +64,13 @@ function AddTransaction() {
     existing && existing.category !== "income" ? existing.category : "food",
   );
   const [when, setWhen] = useState(() => (existing ? new Date(existing.date) : new Date()));
-  const [account, setAccount] = useState(existing?.account ?? paymentMethods[0]);
+  const [account, setAccount] = useState(existing?.account ?? DEFAULT_PAYMENT_METHOD);
+  // "Other" category: a preset sub-option, CUSTOM (user types a name), or null (plain "Other").
+  const existingSub = existing?.category === "other" ? existing.subcategory : undefined;
+  const [subChoice, setSubChoice] = useState<string | null>(
+    existingSub ? (otherSubcategories.includes(existingSub) ? existingSub : CUSTOM) : null,
+  );
+  const [customSub, setCustomSub] = useState(existingSub && !otherSubcategories.includes(existingSub) ? existingSub : "");
   const [note, setNote] = useState(existing?.merchant ?? "");
   const [receipt, setReceipt] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -64,9 +82,15 @@ function AddTransaction() {
   const bump = (n: number) => setAmount((value + n).toFixed(2));
   const accountOptions = paymentMethods.includes(account) ? paymentMethods : [account, ...paymentMethods];
 
+  const isOther = kind === "expense" && category === "other";
+  const subcategory = isOther ? (subChoice === CUSTOM ? customSub.trim() : (subChoice ?? "")) : "";
+  const customMissing = isOther && subChoice === CUSTOM && !customSub.trim();
+  const categoryLabel = subcategory || categories[category].long;
+
   const payload = () => ({
-    merchant: note.trim() || (kind === "income" ? "Income" : categories[category].long),
+    merchant: note.trim() || (kind === "income" ? "Income" : categoryLabel),
     category: kind === "income" ? ("income" as const) : category,
+    subcategory: subcategory || undefined,
     amount: kind === "income" ? value : -value,
     date: when.toISOString(),
     account,
@@ -88,6 +112,7 @@ function AddTransaction() {
 
   function onSaveClick() {
     if (value <= 0 || tooLarge || saving) return;
+    if (customMissing) return setError("Enter a name for your category, or pick one of the options.");
     if (isEdit) setConfirm("save"); // edits need a "Yes" confirmation
     else run(() => add(payload()), "Could not save transaction.");
   }
@@ -173,7 +198,7 @@ function AddTransaction() {
           <section>
             <div className="mb-3 flex items-center justify-between px-1">
               <h2 className="text-[22px] font-semibold tracking-tight">Select Category</h2>
-              <span className="text-sm font-medium text-primary">{categories[category].long}</span>
+              <span className="text-sm font-medium text-primary">{categoryLabel}</span>
             </div>
             <div className="grid grid-cols-4 gap-2">
               {pickableCategories.map((id) => {
@@ -194,6 +219,53 @@ function AddTransaction() {
                 );
               })}
             </div>
+
+            {category === "other" && (
+              <div className="card mt-3 p-4">
+                <p className="label-caps mb-3 text-on-surface-variant">What kind of expense? (optional)</p>
+                <div className="flex flex-wrap gap-2">
+                  {[...otherSubcategories, CUSTOM].map((opt) => {
+                    const on = subChoice === opt;
+                    return (
+                      <button
+                        key={opt}
+                        aria-pressed={on}
+                        onClick={() => {
+                          setError(null);
+                          setSubChoice(on ? null : opt); // tap again to clear
+                        }}
+                        className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm transition ${
+                          on ? "bg-primary text-on-primary" : "bg-surface-container hover:bg-surface-container-high"
+                        }`}
+                      >
+                        {opt === CUSTOM && <PencilLine className="size-3.5" aria-hidden />}
+                        {opt === CUSTOM ? "Other" : opt}
+                      </button>
+                    );
+                  })}
+                </div>
+                {subChoice === CUSTOM && (
+                  <label className="mt-3 flex items-center gap-2 rounded-lg bg-surface-container-low px-4 py-3">
+                    <span className="sr-only">Category name</span>
+                    <input
+                      autoFocus
+                      value={customSub}
+                      maxLength={MAX_SUBCATEGORY_LENGTH}
+                      aria-invalid={customMissing}
+                      onChange={(e) => {
+                        setError(null);
+                        setCustomSub(e.target.value);
+                      }}
+                      placeholder="Enter category, e.g. Pet care"
+                      className="w-full bg-transparent text-lg outline-none placeholder:text-outline"
+                    />
+                    <span className="font-mono text-xs text-outline">
+                      {customSub.length}/{MAX_SUBCATEGORY_LENGTH}
+                    </span>
+                  </label>
+                )}
+              </div>
+            )}
           </section>
         )}
 
@@ -267,7 +339,7 @@ function AddTransaction() {
           title="Save changes to this transaction?"
           message={
             <>
-              It will be updated to <b className="text-on-surface">{note.trim() || categories[category].long}</b>,{" "}
+              It will be updated to <b className="text-on-surface">{note.trim() || categoryLabel}</b>,{" "}
               <b className="font-mono text-on-surface">
                 {kind === "income" ? "+" : "-"}
                 {money(value)}

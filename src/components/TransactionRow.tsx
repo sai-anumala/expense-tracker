@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
-import { categories, type Transaction } from "@/lib/data";
+import { categories, categoryName, type Transaction } from "@/lib/data";
 import { signedMoney, timeOf } from "@/lib/format";
 import { IconTile } from "./ui";
 
@@ -18,7 +18,7 @@ export function TransactionRow({ t }: { t: Transaction }) {
       <div className="min-w-0 flex-1">
         <p className="truncate text-[17px] font-semibold">{t.merchant}</p>
         <p className="truncate text-sm text-on-surface-variant">
-          {cat.long} <span aria-hidden>·</span> {timeOf(t.date)}
+          {categoryName(t)} <span aria-hidden>·</span> {timeOf(t.date)}
           {t.account && (
             <>
               {" "}

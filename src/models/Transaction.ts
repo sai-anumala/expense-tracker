@@ -23,6 +23,8 @@ const TransactionSchema = new Schema(
     amount: { type: Number, required: true },
     date: { type: Date, required: true, index: true },
     account: { type: String, trim: true, maxlength: 80 },
+    /** Only when category is "other": preset (e.g. "Fuel") or user-typed label. */
+    subcategory: { type: String, trim: true, maxlength: 40 },
     receiptName: { type: String, trim: true, maxlength: 200 },
   },
   { timestamps: true, strict: "throw" },

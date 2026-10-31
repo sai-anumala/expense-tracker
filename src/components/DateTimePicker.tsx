@@ -26,7 +26,7 @@ export function formatWhen(d: Date, now = new Date()) {
   return `${day}, ${timeLabel(d)}`;
 }
 
-/** Field + bottom-sheet date/time picker. Future dates are disabled. */
+/** Field + compact centered date/time pop-up. Future dates are disabled. */
 export function DateTimePicker({
   label,
   value,
@@ -128,20 +128,18 @@ function PickerSheet({
         onClose();
       }}
       onClick={(e) => e.target === ref.current && onClose()} // tap backdrop to close
-      className="mx-auto mt-auto mb-0 w-full max-w-md rounded-t-2xl bg-surface-container-lowest p-0 text-on-surface shadow-2xl backdrop:bg-on-surface/40"
+      className="m-auto w-[min(20rem,calc(100%-2rem))] rounded-2xl bg-surface-container-lowest p-0 text-on-surface shadow-2xl backdrop:bg-on-surface/40"
     >
-      <div className="px-5 pt-3 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
-        <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-outline-variant" aria-hidden />
+      <div className="p-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Date & time</h2>
-          <button aria-label="Close" onClick={onClose} className="rounded-full p-2 hover:bg-surface-container">
-            <X className="size-5" />
+          <p className="truncate text-base font-semibold text-primary">{formatWhen(draft, now)}</p>
+          <button aria-label="Close" onClick={onClose} className="-mr-1 rounded-full p-1.5 hover:bg-surface-container">
+            <X className="size-4" />
           </button>
         </div>
 
-        {/* Preview + quick picks */}
-        <p className="mt-1 text-2xl font-semibold tracking-tight text-primary">{formatWhen(draft, now)}</p>
-        <div className="mt-3 flex gap-2">
+        {/* Quick picks */}
+        <div className="mt-2 flex gap-1.5">
           {[
             { label: "Now", back: 0 },
             { label: "Yesterday", back: 1 },
@@ -150,7 +148,7 @@ function PickerSheet({
             <button
               key={q.label}
               onClick={() => quick(q.back)}
-              className="rounded-full bg-surface-container px-3.5 py-1.5 text-sm font-medium hover:bg-surface-container-high"
+              className="rounded-full bg-surface-container px-2.5 py-1 text-xs font-medium hover:bg-surface-container-high"
             >
               {q.label}
             </button>
@@ -158,30 +156,30 @@ function PickerSheet({
         </div>
 
         {/* Calendar */}
-        <div className="mt-5 rounded-xl bg-surface-container-low p-3">
-          <div className="mb-2 flex items-center justify-between">
+        <div className="mt-3 rounded-xl bg-surface-container-low p-2">
+          <div className="mb-1 flex items-center justify-between">
             <button
               aria-label="Previous month"
               onClick={() => setView(new Date(view.getFullYear(), view.getMonth() - 1, 1))}
-              className="rounded-full p-2 hover:bg-surface-container"
+              className="rounded-full p-1.5 hover:bg-surface-container"
             >
-              <ChevronLeft className="size-5" />
+              <ChevronLeft className="size-4" />
             </button>
-            <span className="font-semibold">
+            <span className="text-sm font-semibold">
               {view.toLocaleDateString("en-IN", { month: "long", year: "numeric" })}
             </span>
             <button
               aria-label="Next month"
               disabled={!canNext}
               onClick={() => setView(new Date(view.getFullYear(), view.getMonth() + 1, 1))}
-              className="rounded-full p-2 hover:bg-surface-container disabled:opacity-30"
+              className="rounded-full p-1.5 hover:bg-surface-container disabled:opacity-30"
             >
-              <ChevronRight className="size-5" />
+              <ChevronRight className="size-4" />
             </button>
           </div>
           <div className="grid grid-cols-7 text-center">
             {WEEKDAYS.map((w) => (
-              <span key={w} className="label-caps py-1 text-on-surface-variant">
+              <span key={w} className="py-1 text-[10px] font-semibold text-on-surface-variant">
                 {w}
               </span>
             ))}
@@ -193,7 +191,7 @@ function PickerSheet({
                   onClick={() => pickDay(d)}
                   aria-pressed={sameDay(d, draft)}
                   aria-label={d.toDateString()}
-                  className={`mx-auto my-0.5 grid size-10 place-items-center rounded-full font-mono text-sm transition disabled:opacity-25 ${
+                  className={`mx-auto my-px grid size-8 place-items-center rounded-full font-mono text-xs transition disabled:opacity-25 ${
                     sameDay(d, draft)
                       ? "bg-primary font-semibold text-on-primary"
                       : sameDay(d, now)
@@ -211,29 +209,29 @@ function PickerSheet({
         </div>
 
         {/* Time */}
-        <div className="mt-4 flex items-center gap-3">
-          <span className="label-caps text-on-surface-variant">Time</span>
-          <div className="flex flex-1 items-center justify-end gap-2">
+        <div className="mt-3 flex items-center gap-2">
+          <span className="text-xs font-semibold text-on-surface-variant">Time</span>
+          <div className="flex flex-1 items-center justify-end gap-1">
             <TimeSelect
               label="Hour"
               value={hour12}
               options={Array.from({ length: 12 }, (_, i) => i + 1)}
               onChange={(h) => setTime(h, draft.getMinutes(), pm)}
             />
-            <span className="font-mono text-xl font-semibold">:</span>
+            <span className="font-mono text-base font-semibold">:</span>
             <TimeSelect
               label="Minute"
               value={draft.getMinutes()}
               options={Array.from({ length: 60 }, (_, i) => i)}
               onChange={(m) => setTime(hour12, m, pm)}
             />
-            <div className="ml-1 flex rounded-full bg-surface-container p-1">
+            <div className="ml-1 flex rounded-full bg-surface-container p-0.5">
               {(["AM", "PM"] as const).map((p) => (
                 <button
                   key={p}
                   aria-pressed={(p === "PM") === pm}
                   onClick={() => setTime(hour12, draft.getMinutes(), p === "PM")}
-                  className={`rounded-full px-3 py-1.5 text-sm font-semibold transition ${
+                  className={`rounded-full px-2 py-1 text-xs font-semibold transition ${
                     (p === "PM") === pm ? "bg-surface-container-lowest text-primary shadow-sm" : "text-on-surface-variant"
                   }`}
                 >
@@ -245,14 +243,14 @@ function PickerSheet({
         </div>
         {futureTime && <p className="mt-2 text-right text-xs text-secondary">That time hasn&apos;t happened yet.</p>}
 
-        <div className="mt-5 grid grid-cols-2 gap-3">
-          <button onClick={onClose} className="rounded-full bg-surface-container py-3 font-medium">
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <button onClick={onClose} className="rounded-full bg-surface-container py-2 text-sm font-medium">
             Cancel
           </button>
           <button
             disabled={futureTime}
             onClick={() => onDone(draft)}
-            className="rounded-full bg-primary py-3 font-medium text-on-primary disabled:opacity-50"
+            className="rounded-full bg-primary py-2 text-sm font-medium text-on-primary disabled:opacity-50"
           >
             Done
           </button>
@@ -278,7 +276,7 @@ function TimeSelect({
       aria-label={label}
       value={value}
       onChange={(e) => onChange(Number(e.target.value))}
-      className="appearance-none rounded-lg bg-surface-container px-3 py-2 text-center font-mono text-xl font-semibold outline-none focus:ring-2 focus:ring-primary"
+      className="appearance-none rounded-lg bg-surface-container px-2 py-1 text-center font-mono text-base font-semibold outline-none focus:ring-2 focus:ring-primary"
     >
       {options.map((o) => (
         <option key={o} value={o}>
