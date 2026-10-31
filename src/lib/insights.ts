@@ -73,3 +73,23 @@ export function categoryInsight(list: Transaction[]) {
   }
   return best && Math.round(best.pct) !== 0 ? best : null;
 }
+
+/**
+ * Total Available Balance anchored to when the user entered it.
+ * - balance = entered amount + net of transactions dated AT OR AFTER `asOf` (earlier ones are ignored)
+ * - base (for the "±x% this mo" badge) = balance on `monthStart`, or the entered amount if it was
+ *   entered this month. Never uses transactions dated before `asOf`.
+ */
+export function anchoredBalance(
+  list: Transaction[],
+  entered: number | null,
+  asOfIso: string | null,
+  monthStart: Date,
+): { balance: number; base: number | null; counted: Transaction[] } {
+  if (entered === null || !asOfIso) return { balance: entered ?? 0, base: null, counted: [] };
+  const asOf = new Date(asOfIso);
+  const counted = list.filter((t) => new Date(t.date) >= asOf);
+  const balance = entered + net(counted);
+  const base = asOf >= monthStart ? entered : entered + net(counted.filter((t) => new Date(t.date) < monthStart));
+  return { balance, base, counted };
+}

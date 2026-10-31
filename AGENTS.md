@@ -35,7 +35,7 @@ Last updated: 2026-10-31 · Branch model: `develop` → `main` · Live: <https:/
 
 **Ledgerly** is a mobile-first, multi-user personal expense tracker. Anyone can sign up; each user has their own:
 - **Transactions** (expenses and income, with category, date/time, payment method, note)
-- **Opening balance** (cash held when they started tracking)
+- **Total available balance** (cash they have, entered at a point in time; only later transactions change it)
 - **Budget** (overall monthly limit and optional per-category limits)
 
 Screens: Overview (dashboard), Add/Edit Transaction, Budgets, Analytics, Accounts, Login, Sign up.
@@ -191,7 +191,7 @@ src/
 ├─ lib/
 │  ├─ store.tsx      (client)    TransactionsProvider, useAppData, api() fetch helper, ApiError, errorMessage()
 │  ├─ data.ts                    Category definitions, paymentMethods, types (Transaction, Budget, Settings), empty defaults
-│  ├─ insights.ts                Pure calc helpers: periodBounds, within, totals, spentByCategory, topMerchants, weeklySpend, categoryInsight
+│  ├─ insights.ts                Pure calc helpers: periodBounds, within, totals, spentByCategory, topMerchants, weeklySpend, categoryInsight, anchoredBalance
 │  ├─ format.ts                  money (₹, en-IN), moneyWhole, signedMoney, timeOf, monthLabel, daysLeftInMonth, plural, dayBucket
 │  ├─ db.ts          (server)    connectDb() with global cached connection; isDbConfigured()
 │  ├─ api.ts         (server)    ok/fail, requireDb, readJsonObject, dbErrorResponse, MAX_AMOUNT, toPaise
@@ -240,7 +240,8 @@ All schemas use `timestamps: true` and `strict: "throw"` (unknown fields throw �
 | Field | Type | Rules |
 |---|---|---|
 | `key` | String | **unique** = owner's `userId` |
-| `openingBalance` | Number \| null | ≥ 0; `null` = not set (dashboard shows the prompt) |
+| `openingBalance` | Number \| null | Total available balance **exactly as entered**, ≥ 0; `null` = not set (dashboard shows the prompt). Field name kept from earlier versions |
+| `balanceAsOf` | Date \| null | When it was entered, **truncated to the minute** (set by the server on every save). Older docs lack it → API returns `updatedAt` instead |
 
 Why `key` instead of `userId` on budgets/settings: the collections already had a unique index on `key` from the single-user era; reusing it as the owner id avoided a migration.
 
@@ -267,8 +268,8 @@ All bodies are JSON objects; non-object or invalid JSON → **400**. Mongoose `V
 | `DELETE /api/transactions/:id` | session | – | 200 `{id}` | 404 not found / not owned |
 | `GET /api/budget` | session | – | `{monthlyLimit, categories[]}` (defaults if none) | – |
 | `PUT /api/budget` | session | full budget (replaces) | 200 budget | 400 limits/duplicates |
-| `GET /api/settings` | session | – | `{openingBalance}` | – |
-| `PUT /api/settings` | session | `{openingBalance: number ≥ 0 \| null}` | 200 | 400 |
+| `GET /api/settings` | session | – | `{openingBalance, balanceAsOf}` (ISO or null) | – |
+| `PUT /api/settings` | session | `{openingBalance: number ≥ 0 \| null}` | 200 `{openingBalance, balanceAsOf}`; server sets `balanceAsOf` = now (to the minute), or null when clearing | 400 |
 
 `Transaction` DTO: `{ id, merchant, category, amount, date, account? }`.
 Validation lives in `lib/transactionInput.ts` (transactions), `lib/authInput.ts` (auth), and inline in budget/settings routes. **Server validation is authoritative**; client checks are UX only.
@@ -296,8 +297,8 @@ All computed client-side in pages using `lib/insights.ts`. "This month" = local 
 ### Overview dashboard (spec agreed with the product owner; do not change without asking)
 | Metric | Formula |
 |---|---|
-| **Total Available Balance** | `openingBalance + Σ all income ever − Σ all expenses ever` (total cash, all time) |
-| **±x% this mo** badge | `(balance − balanceOn1st) / balanceOn1st × 100`, where `balanceOn1st = opening + net of transactions dated before the 1st`. Hidden if `balanceOn1st ≤ 0` or \|x\| < 0.05 |
+| **Total Available Balance** | `entered balance + Σ income − Σ expenses` **counting only transactions with `date ≥ balanceAsOf`**. Transactions dated earlier are ignored (they're already in the amount the user typed). Implemented by `anchoredBalance()` in `lib/insights.ts` |
+| **±x% this mo** badge | `(balance − base) / base × 100`. `base` = entered balance if `balanceAsOf` is this month, else entered + net of transactions in `[balanceAsOf, 1st)`. Never uses transactions before the anchor. Hidden if `base ≤ 0` or \|x\| < 0.05 |
 | **Income** tile | Σ income this month |
 | **Spent** tile | Σ expenses this month (shown as −₹) |
 | **Remaining** tile (formerly "To Spend") | `monthlyLimit − spent this month`; "—" if no budget |
@@ -307,7 +308,8 @@ All computed client-side in pages using `lib/insights.ts`. "This month" = local 
 | Recent transactions | latest 8, grouped Today / Yesterday / "Oct 28"; group header shows net |
 | Insight tip | biggest % change vs last month in a category present both months; hidden if none |
 
-Opening balance: if `null`, the balance card shows an input prompt; otherwise a ✎ edits it. The value is stored exactly as typed (no hidden adjustment).
+Balance entry: if `null`, the card asks "How much money do you have right now?". The ✎ opens pre-filled with the **current** balance; saving re-anchors (new amount, `balanceAsOf` = now). The value is stored exactly as typed. Hovering the balance shows when it was set.
+Examples: entered ₹10,000 at 4:30 PM → a ₹500 expense dated 2 PM is ignored (balance stays ₹10,000); a ₹50 expense dated 4:30 PM (same minute) counts → ₹9,950.
 
 Reference scenario (from the spec): budget 3,000, spent 1,830.40 → Remaining 1,169.60; 12 days left → 97.46/day.
 
@@ -428,6 +430,7 @@ For isolated tests use a **temporary local MongoDB** (`mongod --dbpath <tmp> --p
 | `ENOSPC` during npm install | Disk full; `npm cache clean --force` (freed 12 GB once) |
 | Budget/settings duplicate-key error | `key` must be the owner's userId; never upsert with a shared constant |
 | A user sees no data after signup | Expected: new accounts start empty; legacy ownerless data is hidden |
+| A transaction doesn't change the Total Available Balance | Its date is earlier than when the balance was entered (`balanceAsOf`); by design. Re-enter the balance via ✎ if needed |
 
 ---
 
@@ -444,6 +447,7 @@ For isolated tests use a **temporary local MongoDB** (`mongod --dbpath <tmp> --p
 | 2026-10-31 | Dashboard balance = opening + all income − all spending; tiles are this month; "To Spend" renamed "Remaining" | Product spec (Sarah scenario). A brief switch to "Income − Spent + Remaining" was reverted |
 | 2026-10-31 | Transfer tab, Subscriptions, Suggested Match removed | No real data source |
 | 2026-10-31 | `develop` → preview, `main` → production; shared DB | User choice (separate dev DB declined) |
+| 2026-10-31 | Balance is anchored in time: only transactions dated ≥ `balanceAsOf` change it; anchor truncated to the minute; legacy docs fall back to `updatedAt` | User request. Fixes double-counting when a user enters their current balance after already logging transactions |
 | 2026-10-31 | Upgraded Next 15.5.28 / React 19.1.10 / Mongoose 8.24.x | Security advisories; Vercel deploy block |
 
 ---

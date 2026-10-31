@@ -19,7 +19,8 @@ type Ctx = {
   budget: Budget;
   saveBudget: (b: Budget) => Promise<void>;
   settings: Settings;
-  saveSettings: (s: Settings) => Promise<void>;
+  /** Saves the balance; the server stamps balanceAsOf = now. */
+  saveSettings: (s: Pick<Settings, "openingBalance">) => Promise<void>;
 };
 
 const AppDataContext = createContext<Ctx | null>(null);
@@ -172,7 +173,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     setBudget(await api<Budget>("/api/budget", { method: "PUT", body: JSON.stringify(b) }));
   }, []);
 
-  const saveSettings = useCallback(async (s: Settings) => {
+  const saveSettings = useCallback(async (s: Pick<Settings, "openingBalance">) => {
     setSettings(await api<Settings>("/api/settings", { method: "PUT", body: JSON.stringify(s) }));
   }, []);
 

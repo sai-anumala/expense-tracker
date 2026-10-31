@@ -7,8 +7,21 @@ import { SettingsModel } from "@/models/Settings";
 export const dynamic = "force-dynamic";
 
 
-type Lean = { openingBalance?: number | null };
-const toDto = (d: Lean | null) => ({ openingBalance: d?.openingBalance ?? null });
+type Lean = { openingBalance?: number | null; balanceAsOf?: Date | null; updatedAt?: Date };
+
+const toDto = (d: Lean | null) => {
+  const openingBalance = d?.openingBalance ?? null;
+  // Older docs have no balanceAsOf: the balance was entered when the doc was last saved.
+  const asOf = openingBalance === null ? null : (d?.balanceAsOf ?? d?.updatedAt ?? null);
+  return { openingBalance, balanceAsOf: asOf ? new Date(asOf).toISOString() : null };
+};
+
+/** Now, truncated to the minute, so a transaction picked for the same minute counts (≥ rule). */
+function nowToMinute() {
+  const d = new Date();
+  d.setSeconds(0, 0);
+  return d;
+}
 
 export async function GET() {
   const noDb = requireDb();
@@ -24,7 +37,10 @@ export async function GET() {
   }
 }
 
-/** PUT { openingBalance: number >= 0 | null } */
+/**
+ * PUT { openingBalance: number >= 0 | null }
+ * Saving a balance re-anchors it to "now": only transactions dated at/after this minute affect it.
+ */
 export async function PUT(req: Request) {
   const noDb = requireDb();
   if (noDb) return noDb;
@@ -45,7 +61,12 @@ export async function PUT(req: Request) {
     await connectDb();
     const doc = await SettingsModel.findOneAndUpdate(
       { key: user.userId },
-      { $set: { openingBalance: openingBalance === null ? null : toPaise(openingBalance) } },
+      {
+        $set: {
+          openingBalance: openingBalance === null ? null : toPaise(openingBalance),
+          balanceAsOf: openingBalance === null ? null : nowToMinute(),
+        },
+      },
       { upsert: true, new: true, runValidators: true },
     ).lean<Lean>();
     return ok(toDto(doc));

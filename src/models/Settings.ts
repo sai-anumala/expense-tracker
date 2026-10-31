@@ -4,8 +4,13 @@ const SettingsSchema = new Schema(
   {
     /** Owner's user id (one settings document per user). */
     key: { type: String, required: true, unique: true },
-    /** Money held when tracking started, exactly as entered; null = not set. */
+    /** Total available balance exactly as the user entered it; null = not set. */
     openingBalance: { type: Number, default: null, min: 0 },
+    /**
+     * When that balance was entered (truncated to the minute). Only transactions dated at or after
+     * this moment change the balance. null on older docs → API falls back to `updatedAt`.
+     */
+    balanceAsOf: { type: Date, default: null },
   },
   { timestamps: true, strict: "throw" },
 );

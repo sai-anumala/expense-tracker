@@ -26,7 +26,7 @@ import { TabPage } from "@/components/BottomNav";
 import { EmptyState, TransactionRow } from "@/components/TransactionRow";
 import { useAppData } from "@/lib/store";
 import { categories, type Transaction } from "@/lib/data";
-import { categoryInsight, net, periodBounds, totalIncome, totalSpent, within } from "@/lib/insights";
+import { anchoredBalance, categoryInsight, net, periodBounds, totalIncome, totalSpent, within } from "@/lib/insights";
 import { dayBucket, daysLeftInMonth, plural, money, monthLabel } from "@/lib/format";
 
 const quickActions = [
@@ -44,12 +44,11 @@ export default function Dashboard() {
   const [monthStart] = periodBounds("month");
   const thisMonth = within(transactions, periodBounds("month"));
 
-  // Total Available Balance: opening balance + every income − every expense.
+  // Total Available Balance = entered balance + transactions dated at/after it was entered (see anchoredBalance).
   const opening = settings.openingBalance;
-  const balance = (opening ?? 0) + net(transactions);
-  // Balance at the start of this month, for the "+x% this mo" growth badge.
-  const balanceAtMonthStart = (opening ?? 0) + net(transactions.filter((t) => new Date(t.date) < monthStart));
-  const growth = balanceAtMonthStart > 0 ? ((balance - balanceAtMonthStart) / balanceAtMonthStart) * 100 : null;
+  const asOf = settings.balanceAsOf ? new Date(settings.balanceAsOf) : null;
+  const { balance, base } = anchoredBalance(transactions, opening, settings.balanceAsOf, monthStart);
+  const growth = base !== null && base > 0 ? ((balance - base) / base) * 100 : null;
 
   // Triad row: this month's cash flow. Remaining = monthly budget cap − spent this month.
   const income = totalIncome(thisMonth);
@@ -97,8 +96,8 @@ export default function Dashboard() {
                 Total Available Balance
                 {opening !== null && !editingOpening && (
                   <button
-                    aria-label="Edit opening balance"
-                    title="Edit opening balance"
+                    aria-label="Update total available balance"
+                    title="Update total available balance"
                     onClick={() => setEditingOpening(true)}
                     className="rounded-full p-1 text-outline hover:bg-surface-container hover:text-on-surface"
                   >
@@ -122,12 +121,12 @@ export default function Dashboard() {
             {opening === null || editingOpening ? (
               <div>
                 <p className="text-sm text-on-surface-variant">
-                  Enter your opening balance: the money you had when you started tracking. Income adds to it and
-                  spending subtracts from it.
+                  How much money do you have right now? From this moment on, income you record adds to it and
+                  spending subtracts from it. Transactions dated earlier won&apos;t change it.
                 </p>
                 <AmountForm
-                  label="Opening balance"
-                  initial={opening ?? undefined}
+                  label="Total available balance"
+                  initial={opening === null ? undefined : Math.round(balance * 100) / 100}
                   onCancel={opening !== null ? () => setEditingOpening(false) : undefined}
                   onSave={async (v) => {
                     await saveSettings({ openingBalance: v }); // errors are shown by AmountForm
@@ -136,7 +135,14 @@ export default function Dashboard() {
                 />
               </div>
             ) : (
-              <div className="flex items-baseline gap-1">
+              <div
+                className="flex items-baseline gap-1"
+                title={
+                  asOf
+                    ? `Set to ${money(opening ?? 0)} on ${asOf.toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}; updated by transactions dated from then on`
+                    : undefined
+                }
+              >
                 <span
                   className={`text-[36px] leading-[44px] font-bold tracking-[-0.03em] ${
                     balance < 0 ? "text-secondary" : "text-on-surface"

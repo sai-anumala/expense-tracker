@@ -78,8 +78,10 @@ export type Budget = {
 export const emptyBudget: Budget = { monthlyLimit: 0, categories: [] };
 
 export type Settings = {
-  /** Money held when tracking started, exactly as entered; null = not set yet. */
+  /** Total available balance exactly as entered; null = not set yet. */
   openingBalance: number | null;
+  /** ISO time the balance was entered; only transactions dated at/after it change the balance. */
+  balanceAsOf: string | null;
 };
 
-export const emptySettings: Settings = { openingBalance: null };
+export const emptySettings: Settings = { openingBalance: null, balanceAsOf: null };
