@@ -17,8 +17,10 @@ import {
   ChevronRight,
   Lightbulb,
   ReceiptText,
+  Pencil,
   X,
 } from "lucide-react";
+import { AmountForm } from "@/components/AmountForm";
 import { AppHeader, MonthPill, ProgressBar } from "@/components/ui";
 import { TabPage } from "@/components/BottomNav";
 import { EmptyState, TransactionRow } from "@/components/TransactionRow";
@@ -35,24 +37,25 @@ const quickActions = [
 ];
 
 export default function Dashboard() {
-  const { transactions, budget } = useAppData();
+  const { transactions, budget, settings, saveSettings } = useAppData();
   const [tipOpen, setTipOpen] = useState(true);
+  const [editingOpening, setEditingOpening] = useState(false);
 
+  const [monthStart] = periodBounds("month");
   const thisMonth = within(transactions, periodBounds("month"));
-  const lastMonth = within(transactions, periodBounds("month", new Date(), 1));
-  const limit = budget.monthlyLimit;
 
-  // Triad row (this month): Income, Spent, and To Spend = monthly budget − spent (0 when no budget is set).
+  // Total Available Balance: opening balance + every income − every expense.
+  const opening = settings.openingBalance;
+  const balance = (opening ?? 0) + net(transactions);
+  // Balance at the start of this month, for the "+x% this mo" growth badge.
+  const balanceAtMonthStart = (opening ?? 0) + net(transactions.filter((t) => new Date(t.date) < monthStart));
+  const growth = balanceAtMonthStart > 0 ? ((balance - balanceAtMonthStart) / balanceAtMonthStart) * 100 : null;
+
+  // Triad row: this month's cash flow. To Spend = monthly budget cap − spent this month.
   const income = totalIncome(thisMonth);
   const spent = totalSpent(thisMonth);
+  const limit = budget.monthlyLimit;
   const toSpend = limit - spent;
-
-  // Total Available Balance = Income − Spent + To Spend (the three tiles added up, as displayed).
-  const totalOf = (inc: number, sp: number) => inc - sp + (limit > 0 ? limit - sp : 0);
-  const balance = totalOf(income, spent);
-  // "+x% this mo" badge: change vs the same total for last month (with the current budget).
-  const lastTotal = totalOf(totalIncome(lastMonth), totalSpent(lastMonth));
-  const growth = lastMonth.length > 0 && lastTotal > 0 ? ((balance - lastTotal) / lastTotal) * 100 : null;
   const used = limit > 0 ? spent / limit : 0;
   const daysLeft = daysLeftInMonth();
   const [whole, cents] = money(balance).split(".");
@@ -92,8 +95,18 @@ export default function Dashboard() {
             <div className="flex items-center justify-between gap-2">
               <span className="flex items-center gap-1 text-xs font-medium text-on-surface-variant">
                 Total Available Balance
+                {opening !== null && !editingOpening && (
+                  <button
+                    aria-label="Edit opening balance"
+                    title="Edit opening balance"
+                    onClick={() => setEditingOpening(true)}
+                    className="rounded-full p-1 text-outline hover:bg-surface-container hover:text-on-surface"
+                  >
+                    <Pencil className="size-3" />
+                  </button>
+                )}
               </span>
-              {growth !== null && Math.abs(growth) >= 0.05 && (
+              {growth !== null && Math.abs(growth) >= 0.05 && !editingOpening && (
                 <span
                   className={`label-caps inline-flex shrink-0 items-center gap-1 rounded-full bg-surface-container px-2 py-0.5 normal-case ${
                     growth >= 0 ? "text-primary" : "text-secondary"
@@ -106,17 +119,35 @@ export default function Dashboard() {
               )}
             </div>
 
-            <div className="flex items-baseline gap-1" title="Income − Spent + To Spend">
-              <span
-                className={`text-[36px] leading-[44px] font-bold tracking-[-0.03em] ${
-                  balance < 0 ? "text-secondary" : "text-on-surface"
-                }`}
-              >
-                {balance < 0 && "-"}
-                {whole}
-                <span className="font-medium text-on-surface-variant">.{cents}</span>
-              </span>
-            </div>
+            {opening === null || editingOpening ? (
+              <div>
+                <p className="text-sm text-on-surface-variant">
+                  Enter your opening balance: the money you had when you started tracking. Income adds to it and
+                  spending subtracts from it.
+                </p>
+                <AmountForm
+                  label="Opening balance"
+                  initial={opening ?? undefined}
+                  onCancel={opening !== null ? () => setEditingOpening(false) : undefined}
+                  onSave={async (v) => {
+                    await saveSettings({ openingBalance: v }); // errors are shown by AmountForm
+                    setEditingOpening(false);
+                  }}
+                />
+              </div>
+            ) : (
+              <div className="flex items-baseline gap-1">
+                <span
+                  className={`text-[36px] leading-[44px] font-bold tracking-[-0.03em] ${
+                    balance < 0 ? "text-secondary" : "text-on-surface"
+                  }`}
+                >
+                  {balance < 0 && "-"}
+                  {whole}
+                  <span className="font-medium text-on-surface-variant">.{cents}</span>
+                </span>
+              </div>
+            )}
 
             {/* Triad metrics: this month */}
             <div className="grid grid-cols-3 gap-1 pt-1">
