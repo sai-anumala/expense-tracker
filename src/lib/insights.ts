@@ -31,7 +31,8 @@ export const expenses = (list: Transaction[]) => list.filter((t) => t.amount < 0
 export const totalSpent = (list: Transaction[]) => expenses(list).reduce((s, t) => s - t.amount, 0);
 export const totalIncome = (list: Transaction[]) =>
   list.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0);
-export const net = (list: Transaction[]) => list.reduce((s, t) => s + t.amount, 0);
+/** Sum of signed amounts (works for transactions and loan cash events). */
+export const net = (list: { amount: number }[]) => list.reduce((s, t) => s + t.amount, 0);
 
 export function spentByCategory(list: Transaction[]) {
   const map = new Map<CategoryId, number>();
@@ -75,17 +76,18 @@ export function categoryInsight(list: Transaction[]) {
 }
 
 /**
- * Total Available Balance anchored to when the user entered it.
+ * Total Available Balance anchored to when the user entered it. `list` = transactions plus loan cash
+ * events (lib/loans.ts loanCashEvents), so lending/borrowing/repayments move the balance too.
  * - balance = entered amount + net of transactions dated AT OR AFTER `asOf` (earlier ones are ignored)
  * - base (for the "±x% this mo" badge) = balance on `monthStart`, or the entered amount if it was
  *   entered this month. Never uses transactions dated before `asOf`.
  */
-export function anchoredBalance(
-  list: Transaction[],
+export function anchoredBalance<T extends { amount: number; date: string }>(
+  list: T[],
   entered: number | null,
   asOfIso: string | null,
   monthStart: Date,
-): { balance: number; base: number | null; counted: Transaction[] } {
+): { balance: number; base: number | null; counted: T[] } {
   if (entered === null || !asOfIso) return { balance: entered ?? 0, base: null, counted: [] };
   const asOf = new Date(asOfIso);
   const counted = list.filter((t) => new Date(t.date) >= asOf);

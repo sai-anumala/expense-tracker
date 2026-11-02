@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutGrid, ChartSpline, PieChart, Wallet, Plus } from "lucide-react";
+import { LayoutGrid, ChartSpline, PieChart, HandCoins, Plus } from "lucide-react";
 
 const left = [
   { href: "/", label: "Overview", icon: LayoutGrid },
@@ -10,13 +10,13 @@ const left = [
 ];
 const right = [
   { href: "/budgets", label: "Budgets", icon: PieChart },
-  { href: "/accounts", label: "Accounts", icon: Wallet },
+  { href: "/loans", label: "Loans", icon: HandCoins },
 ];
 
 export function BottomNav() {
   const path = usePathname();
   const item = ({ href, label, icon: Icon }: (typeof left)[number]) => {
-    const active = path === href;
+    const active = href === "/" ? path === "/" : path === href || path.startsWith(`${href}/`);
     return (
       <Link
         key={href}

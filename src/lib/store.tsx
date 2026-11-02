@@ -3,8 +3,11 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { DatabaseZap, RotateCw } from "lucide-react";
 import { emptyBudget, emptySettings, type Budget, type Settings, type Transaction } from "./data";
+import type { Loan } from "./loans";
 
 type NewTransaction = Omit<Transaction, "id"> & { receiptName?: string };
+export type LoanInput = Omit<Loan, "id" | "payments">;
+export type PaymentInput = { amount: number; date: string; account?: string; note?: string };
 
 export type User = { id: string; name: string; email: string };
 
@@ -21,6 +24,13 @@ type Ctx = {
   settings: Settings;
   /** Saves the balance; the server stamps balanceAsOf = now. */
   saveSettings: (s: Pick<Settings, "openingBalance">) => Promise<void>;
+  /** Money lent/borrowed. Affects Total Available Balance, never income/spending. */
+  loans: Loan[];
+  addLoan: (l: LoanInput) => Promise<Loan>;
+  updateLoan: (id: string, l: LoanInput) => Promise<void>;
+  removeLoan: (id: string) => Promise<void>;
+  addPayment: (loanId: string, p: PaymentInput) => Promise<void>;
+  removePayment: (loanId: string, paymentId: string) => Promise<void>;
 };
 
 const AppDataContext = createContext<Ctx | null>(null);
@@ -95,22 +105,25 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [budget, setBudget] = useState<Budget>(emptyBudget);
   const [settings, setSettings] = useState<Settings>(emptySettings);
+  const [loans, setLoans] = useState<Loan[]>([]);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
     setStatus("loading");
     try {
-      const [me, tx, b, s] = await Promise.all([
+      const [me, tx, b, s, ln] = await Promise.all([
         api<User>("/api/auth/me"),
         api<Transaction[]>("/api/transactions"),
         api<Budget>("/api/budget"),
         api<Settings>("/api/settings"),
+        api<Loan[]>("/api/loans"),
       ]);
       setUser(me);
       setTransactions(tx.sort(byDateDesc));
       setBudget(b);
       setSettings(s);
+      setLoans(ln);
       setStatus("ready");
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) return; // redirecting to /login; keep the spinner
@@ -177,6 +190,50 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     setSettings(await api<Settings>("/api/settings", { method: "PUT", body: JSON.stringify(s) }));
   }, []);
 
+  // ── Loans ──
+  const replaceLoan = (saved: Loan) => setLoans((prev) => prev.map((x) => (x.id === saved.id ? saved : x)));
+  const dropLoanIfGone = (id: string, e: unknown) => {
+    if (e instanceof ApiError && e.status === 404) setLoans((prev) => prev.filter((x) => x.id !== id));
+  };
+
+  const addLoan = useCallback(async (l: LoanInput) => {
+    const saved = await api<Loan>("/api/loans", { method: "POST", body: JSON.stringify(l) });
+    setLoans((prev) => [saved, ...prev]);
+    return saved;
+  }, []);
+
+  const updateLoan = useCallback(async (id: string, l: LoanInput) => {
+    try {
+      replaceLoan(await api<Loan>(`/api/loans/${id}`, { method: "PUT", body: JSON.stringify(l) }));
+    } catch (e) {
+      dropLoanIfGone(id, e);
+      throw e;
+    }
+  }, []);
+
+  const removeLoan = useCallback(async (id: string) => {
+    try {
+      await api(`/api/loans/${id}`, { method: "DELETE" });
+      setLoans((prev) => prev.filter((x) => x.id !== id));
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 404) return dropLoanIfGone(id, e);
+      throw e;
+    }
+  }, []);
+
+  const addPayment = useCallback(async (loanId: string, p: PaymentInput) => {
+    try {
+      replaceLoan(await api<Loan>(`/api/loans/${loanId}/payments`, { method: "POST", body: JSON.stringify(p) }));
+    } catch (e) {
+      dropLoanIfGone(loanId, e);
+      throw e;
+    }
+  }, []);
+
+  const removePayment = useCallback(async (loanId: string, paymentId: string) => {
+    replaceLoan(await api<Loan>(`/api/loans/${loanId}/payments/${paymentId}`, { method: "DELETE" }));
+  }, []);
+
   const logout = useCallback(async () => {
     try {
       await api("/api/auth/logout", { method: "POST" });
@@ -217,7 +274,24 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
 
   return (
     <AppDataContext.Provider
-      value={{ user: user!, logout, transactions, add, update, remove, budget, saveBudget, settings, saveSettings }}
+      value={{
+        user: user!,
+        logout,
+        transactions,
+        add,
+        update,
+        remove,
+        budget,
+        saveBudget,
+        settings,
+        saveSettings,
+        loans,
+        addLoan,
+        updateLoan,
+        removeLoan,
+        addPayment,
+        removePayment,
+      }}
     >
       {children}
     </AppDataContext.Provider>

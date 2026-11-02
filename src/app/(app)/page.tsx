@@ -13,7 +13,7 @@ import {
   Clock,
   CirclePlus,
   Banknote,
-  ChartSpline,
+  HandCoins,
   ChevronRight,
   Lightbulb,
   ReceiptText,
@@ -26,6 +26,7 @@ import { TabPage } from "@/components/BottomNav";
 import { EmptyState, TransactionRow } from "@/components/TransactionRow";
 import { useAppData } from "@/lib/store";
 import { categories, type Transaction } from "@/lib/data";
+import { loanCashEvents, loanTotals } from "@/lib/loans";
 import { anchoredBalance, categoryInsight, net, periodBounds, totalIncome, totalSpent, within } from "@/lib/insights";
 import { dayBucket, daysLeftInMonth, plural, money, monthLabel } from "@/lib/format";
 
@@ -33,11 +34,11 @@ const quickActions = [
   { label: "Add Expense", icon: CirclePlus, href: "/add", accent: true },
   { label: "Add Income", icon: Banknote, href: "/add?kind=income" },
   { label: "Budgets", icon: PieChart, href: "/budgets" },
-  { label: "Analytics", icon: ChartSpline, href: "/analytics" },
+  { label: "Lend / Borrow", icon: HandCoins, href: "/loans/new" },
 ];
 
 export default function Dashboard() {
-  const { transactions, budget, settings, saveSettings } = useAppData();
+  const { transactions, budget, settings, saveSettings, loans } = useAppData();
   const [tipOpen, setTipOpen] = useState(true);
   const [editingOpening, setEditingOpening] = useState(false);
 
@@ -47,7 +48,14 @@ export default function Dashboard() {
   // Total Available Balance = entered balance + transactions dated at/after it was entered (see anchoredBalance).
   const opening = settings.openingBalance;
   const asOf = settings.balanceAsOf ? new Date(settings.balanceAsOf) : null;
-  const { balance, base } = anchoredBalance(transactions, opening, settings.balanceAsOf, monthStart);
+  // Loans move cash too (lent/repaid/borrowed), but never count as income or spending.
+  const { balance, base } = anchoredBalance(
+    [...transactions, ...loanCashEvents(loans)],
+    opening,
+    settings.balanceAsOf,
+    monthStart,
+  );
+  const loanSum = loanTotals(loans);
   const growth = base !== null && base > 0 ? ((balance - base) / base) * 100 : null;
 
   // Triad row: this month's cash flow. Remaining = monthly budget cap − spent this month.
@@ -226,6 +234,22 @@ export default function Dashboard() {
             </div>
           )}
         </section>
+
+        {/* Loans summary (only when there are open loans) */}
+        {(loanSum.lentOpen > 0 || loanSum.borrowedOpen > 0) && (
+          <Link href="/loans" className="card grid grid-cols-2 divide-x divide-surface-container p-0 transition hover:bg-surface-container-low">
+            <div className="p-4">
+              <p className="text-xs font-medium text-on-surface-variant">You&apos;ll get</p>
+              <p className="mt-1 text-lg font-bold tabular-nums text-primary">{money(loanSum.toReceive)}</p>
+              <p className="text-xs text-on-surface-variant">{plural(loanSum.lentOpen, "loan")} given</p>
+            </div>
+            <div className="p-4">
+              <p className="text-xs font-medium text-on-surface-variant">You owe</p>
+              <p className="mt-1 text-lg font-bold tabular-nums text-secondary">{money(loanSum.toPay)}</p>
+              <p className="text-xs text-on-surface-variant">{plural(loanSum.borrowedOpen, "loan")} taken</p>
+            </div>
+          </Link>
+        )}
 
         {/* Quick actions */}
         <section>

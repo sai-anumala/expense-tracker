@@ -4,7 +4,7 @@
 > Read this first; it should answer most questions without exploring the code.
 > **Keep it current:** any change to behaviour, data model, API, env vars, or deployment must update the relevant section here **in the same commit** (see [§15](#15-maintaining-this-file)).
 
-Last updated: 2026-10-31 · Branch model: `develop` → `main` · Live: <https://expense-tracker-sage-six-21.vercel.app>
+Last updated: 2026-11-02 · Branch model: `develop` → `main` · Live: <https://expense-tracker-sage-six-21.vercel.app>
 
 ---
 
@@ -37,8 +37,9 @@ Last updated: 2026-10-31 · Branch model: `develop` → `main` · Live: <https:/
 - **Transactions** (expenses and income, with category, date/time, payment method, note)
 - **Total available balance** (cash they have, entered at a point in time; only later transactions change it)
 - **Budget** (overall monthly limit and optional per-category limits)
+- **Loans** (money lent to / borrowed from friends, relatives, online apps, banks, with repayments)
 
-Screens: Overview (dashboard), Add/Edit Transaction, Budgets, Analytics, Accounts, Login, Sign up.
+Screens: Overview (dashboard), Add/Edit Transaction, Budgets, Analytics, Loans (list, new/edit, detail), Accounts (via "View All"), Login, Sign up.
 Currency: **INR (₹)** with Indian digit grouping. UI derived from a Google Stitch design (see [§13](#13-design-system)).
 
 There is **no mock or sample data** anywhere: every number comes from the signed-in user's MongoDB data.
@@ -136,10 +137,11 @@ src/middleware.ts  ── verifies `ledgerly_session` JWT (edge, jose)
 App Router
   ├─ (auth)/login, (auth)/signup ─ AuthForm → POST /api/auth/* → sets cookie → full reload
   └─ (app)/layout.tsx ─ <TransactionsProvider> (src/lib/store.tsx, client)
-        on mount: GET /api/auth/me, /api/transactions, /api/budget, /api/settings (parallel)
+        on mount: GET /api/auth/me, /api/transactions, /api/budget, /api/settings, /api/loans (parallel)
         shows spinner → data | error screen with "Try again"
         exposes useAppData(): { user, logout, transactions, add, update, remove,
-                                budget, saveBudget, settings, saveSettings }
+                                budget, saveBudget, settings, saveSettings,
+                                loans, addLoan, updateLoan, removeLoan, addPayment, removePayment }
         pages compute all metrics client-side from that data (src/lib/insights.ts)
   ▼
 API route handlers (Node runtime, src/app/api/**)
@@ -171,17 +173,21 @@ src/
 │  ├─ (app)/add/page.tsx         Add AND edit transaction (`?id=` edit, `?kind=income` preselect). Confirm dialogs
 │  ├─ (app)/budgets/page.tsx     Monthly limit + category budgets CRUD
 │  ├─ (app)/analytics/page.tsx   Week/Month/Year analytics, donut, weekly bars, top merchants, CSV export
-│  ├─ (app)/accounts/page.tsx    Totals per payment method + full history with filter
+│  ├─ (app)/accounts/page.tsx    Totals per payment method + full history with filter (reached via "View All")
+│  ├─ (app)/loans/page.tsx       Loans tab: You'll get / You owe, I lent / I borrowed buttons, Open/Settled lists
+│  ├─ (app)/loans/new/page.tsx   Create or edit (`?id=`) a loan; `?dir=lent|borrowed` preselect
+│  ├─ (app)/loans/[id]/page.tsx  Loan detail: progress, record repayment / Settle in full, history, edit, delete
 │  └─ api/
 │     ├─ health/route.ts         GET public status {db, auth}; never leaks error details
 │     ├─ auth/signup|login|logout|me/route.ts
 │     ├─ transactions/route.ts   GET list, POST create
 │     ├─ transactions/[id]/route.ts  PUT update, DELETE
 │     ├─ budget/route.ts         GET, PUT (replace whole budget)
-│     └─ settings/route.ts       GET, PUT (opening balance)
+│     ├─ settings/route.ts       GET, PUT (opening balance)
+│     └─ loans/route.ts · loans/[id] · loans/[id]/payments · loans/[id]/payments/[paymentId]
 ├─ components/
 │  ├─ ui.tsx                     AppHeader (logo, bell [no-op], UserMenu), Logo, IconTile, MonthPill [no-op], ProgressBar, SectionTitle
-│  ├─ BottomNav.tsx              Fixed bottom nav + center FAB (/add); TabPage wrapper (padding above nav)
+│  ├─ BottomNav.tsx              Fixed bottom nav (Overview, Analytics, [+], Budgets, Loans); TabPage wrapper
 │  ├─ TransactionRow.tsx         Swipeable row (drag left / tap → View · Edit · Delete), details pop-up, delete confirm; EmptyState
 │  ├─ AmountForm.tsx             Inline ₹ amount form (validates, shows its own errors); sanitizeAmount()
 │  ├─ ConfirmDialog.tsx          <dialog> Yes/Cancel modal (danger variant, busy state)
@@ -198,8 +204,10 @@ src/
 │  ├─ session.ts     (edge-safe) JWT create/verify, SESSION_COOKIE, isAuthConfigured
 │  ├─ auth.ts        (server)    getSession, requireUser, set/clearSessionCookie
 │  ├─ authInput.ts   (server)    validateEmail/Password/Name, normalizeEmail
-│  └─ transactionInput.ts (server) parseTransactionInput (all tx validation), toTransactionDto
-└─ models/  User.ts · Transaction.ts · Budget.ts · Settings.ts
+│  ├─ transactionInput.ts (server) parseTransactionInput (all tx validation), toTransactionDto
+│  ├─ loans.ts                   (shared) Loan types, loanStatus, nextPaymentDate, loanCashEvents, loanTotals, source labels
+│  └─ loanInput.ts   (server)    parseLoanInput, parsePaymentInput, toLoanDto
+└─ models/  User.ts · Transaction.ts · Budget.ts · Settings.ts · Loan.ts
 design/      Stitch screenshots (dashboard/add/budget/analytics.png) + DESIGN.md (design system spec)
 README.md    Short human-facing overview (keep consistent with this file)
 CLAUDE.md    Imports this file for Claude Code
@@ -243,6 +251,21 @@ All schemas use `timestamps: true` and `strict: "throw"` (unknown fields throw �
 | `openingBalance` | Number \| null | Total available balance **exactly as entered**, ≥ 0; `null` = not set (dashboard shows the prompt). Field name kept from earlier versions |
 | `balanceAsOf` | Date \| null | When it was entered, **truncated to the minute** (set by the server on every save). Older docs lack it → API returns `updatedAt` instead |
 
+**`loans`** (`Loan`): one document per loan, repayments embedded
+| Field | Type | Rules |
+|---|---|---|
+| `userId` | ObjectId → User | required, indexed; every query filters on it |
+| `direction` | enum | `lent` (they owe me) \| `borrowed` (I owe) |
+| `person` | String | required, ≤ 60 (friend, relative, app or bank name) |
+| `source` | enum | `friend, relative, online, bank, other` |
+| `amount` | Number | principal that changed hands, > 0, ≤ 1e10 |
+| `totalDue` | Number | total to repay, ≥ `amount` (interest/fees); defaults to `amount` |
+| `date` | Date | when money changed hands; not in the future |
+| `dueDate` | Date? | optional "repay by" (end of chosen day); ≥ `date` |
+| `monthlyPayment` + `paymentDay` | Number? + 1–28 | optional monthly plan (both or neither); `monthlyPayment ≤ totalDue` |
+| `account`, `note` | String? | payment method ≤ 80, note ≤ 200 |
+| `payments[]` | `{_id, amount > 0, date, account?, note?}` | sum ≤ `totalDue`; each dated ≥ `date`, not future. Loan is **settled** when Σ payments ≥ `totalDue` (derived, not stored) |
+
 Why `key` instead of `userId` on budgets/settings: the collections already had a unique index on `key` from the single-user era; reusing it as the owner id avoided a migration.
 
 **Legacy data:** one `settings` doc with `key: "default"` (₹10,000) predates accounts. It is ownerless, invisible to every user, and safe to delete.
@@ -271,6 +294,15 @@ All bodies are JSON objects; non-object or invalid JSON → **400**. Mongoose `V
 | `GET /api/settings` | session | – | `{openingBalance, balanceAsOf}` (ISO or null) | – |
 | `PUT /api/settings` | session | `{openingBalance: number ≥ 0 \| null}` | 200 `{openingBalance, balanceAsOf}`; server sets `balanceAsOf` = now (to the minute), or null when clearing | 400 |
 
+| `GET /api/loans` | session | – | `Loan[]` newest first (max 500) | – |
+| `POST /api/loans` | session | `{direction, person, source, amount, totalDue?, date, dueDate?, monthlyPayment?, paymentDay?, account?, note?}` | 201 `Loan` | 400 with specific reason |
+| `PUT /api/loans/:id` | session | same as POST (payments kept; omitted optionals are removed) | 200 `Loan` | 400 `totalDue` < repaid, or `date` after first repayment; 404 |
+| `DELETE /api/loans/:id` | session | – | 200 `{id}` (repayments deleted too) | 404 |
+| `POST /api/loans/:id/payments` | session | `{amount, date, account?, note?}` | 201 updated `Loan` | 400 settled / more than outstanding / before loan date; 404 |
+| `DELETE /api/loans/:id/payments/:paymentId` | session | – | 200 updated `Loan` | 404 |
+
+`Loan` DTO: fields above plus `id`, `payments[]` (each with `id`, newest first). Status is computed client-side with `loanStatus()`.
+
 `Transaction` DTO: `{ id, merchant, category, amount, date, account? }`. Unknown body fields (e.g. an old `subcategory`) are ignored.
 Validation lives in `lib/transactionInput.ts` (transactions), `lib/authInput.ts` (auth), and inline in budget/settings routes. **Server validation is authoritative**; client checks are UX only.
 
@@ -297,7 +329,7 @@ All computed client-side in pages using `lib/insights.ts`. "This month" = local 
 ### Overview dashboard (spec agreed with the product owner; do not change without asking)
 | Metric | Formula |
 |---|---|
-| **Total Available Balance** | `entered balance + Σ income − Σ expenses` **counting only transactions with `date ≥ balanceAsOf`**. Transactions dated earlier are ignored (they're already in the amount the user typed). Implemented by `anchoredBalance()` in `lib/insights.ts` |
+| **Total Available Balance** | `entered balance + Σ income − Σ expenses + loan cash` **counting only transactions and loan events with `date ≥ balanceAsOf`**. Loan cash (`loanCashEvents`): lending −amount, repayment received +; borrowing +amount, repayment made −. Transactions dated earlier are ignored (they're already in the amount the user typed). Implemented by `anchoredBalance()` in `lib/insights.ts` |
 | **±x% this mo** badge | `(balance − base) / base × 100`. `base` = entered balance if `balanceAsOf` is this month, else entered + net of transactions in `[balanceAsOf, 1st)`. Never uses transactions before the anchor. Hidden if `base ≤ 0` or \|x\| < 0.05 |
 | **Income** tile | Σ income this month |
 | **Spent** tile | Σ expenses this month (shown as −₹) |
@@ -312,6 +344,13 @@ Balance entry: if `null`, the card asks "How much money do you have right now?".
 Examples: entered ₹10,000 at 4:30 PM → a ₹500 expense dated 2 PM is ignored (balance stays ₹10,000); a ₹50 expense dated 4:30 PM (same minute) counts → ₹9,950.
 
 Reference scenario (from the spec): budget 3,000, spent 1,830.40 → Remaining 1,169.60; 12 days left → 97.46/day.
+
+### Loans (lend & borrow)
+- **Never income or spending:** loans don't touch Income, Spent, Remaining, budgets or analytics. They only move Total Available Balance (and only when dated ≥ `balanceAsOf`).
+- `paid = Σ payments`, `outstanding = max(0, totalDue − paid)`, **settled** when outstanding = 0, `progress = paid / totalDue`.
+- **Overdue** = not settled and `dueDate` < today. **Next payment** (monthly plan) = next `paymentDay` on/after today (and after the loan date); amount shown = `min(monthlyPayment, outstanding)`.
+- Totals: **You'll get** = Σ outstanding of open `lent`; **You owe** = Σ outstanding of open `borrowed`. Shown on the Loans tab and (when any are open) on the Overview.
+- Open list order: overdue first, then nearest next payment / due date, then newest.
 
 ### Budgets page
 - Per category: spent this month vs limit. Badge: `> 1` "Over limit", `≥ 0.9` "NN% Spent", `≥ 0.8` "Near limit", else "On track". Amber (tertiary) when ≥ 0.8.
@@ -339,8 +378,11 @@ Reference scenario (from the spec): budget 3,000, spent 1,830.40 → Remaining 1
 - **Transaction rows** (Overview recent list, Accounts history): **swipe left** (touch or mouse drag) or **tap / Enter** to reveal three actions: **View** (read-only details pop-up with an Edit button), **Edit** (`/add?id=…`), **Delete** (confirm dialog, "Yes, delete"). Only one row is open at a time (window event `ledgerly:row-open`); vertical scrolling stays native (`touch-action: pan-y`). Rows no longer navigate on tap.
 - **Monthly Budget card:** app font with tabular digits; the spent/cap row and the "Daily safe pace" row wrap on narrow phones, with "N days left" in its own pill so they never collide.
 - **Budgets:** Set Limit (inline AmountForm), add category budget (chips + amount), remove → confirm dialog.
+- **Loans tab** (`/loans`): summary cards, **I lent money** / **I borrowed** buttons → `/loans/new?dir=…`, Open/Settled tabs, cards with progress bar, Overdue badge, next payment and repay-by date. Tap → detail.
+- **Loan form** (`/loans/new`, `?id=` to edit): I lent / I borrowed tabs, big amount, optional **Total to repay** (interest/fees), name, source chips (Friend, Relative, Online app, Bank, Other), date (DateTimePicker), payment method (default UPI), optional **Repay by** (native date input), optional **Monthly repayment plan** (amount + day 1–28), note. Edit → confirm dialog.
+- **Loan detail** (`/loans/[id]`): outstanding (hero), progress, details (dates, plan, next payment, note); **Record repayment** with **Settle in full · ₹X** and **Monthly · ₹Y** quick-fill chips, date, method, note → confirm ("Record & settle loan" when it clears the balance); repayment history with remove (confirm); Edit loan; Delete loan (danger confirm).
 - **Header:** logo + subtitle, bell (no-op), UserMenu (initials → name/email/Log out).
-- **Bottom nav:** Overview, Analytics, [+ FAB → /add], Budgets, Accounts.
+- **Bottom nav:** Overview, Analytics, [+ FAB → /add], Budgets, **Loans**. Accounts is reached via "View All" on Recent Transactions. Quick actions: Add Expense, Add Income, Lend / Borrow, Budgets.
 - **Loading:** spinner. **Load error:** "Couldn't load your data" + reason + Try again. **Empty states** on every list.
 - **Errors:** forms show server messages inline (`role="alert"`); network → "You're offline…" / "Can't reach the server…"; 15 s request timeout.
 
@@ -371,6 +413,7 @@ Tokens are defined in `src/app/globals.css` under `@theme` and used as Tailwind 
 1. **Never commit secrets**; never print them. `.env.local` stays local; Vercel env vars are *sensitive*.
 2. **No mock or sample data, no localStorage for app data.** Everything comes from MongoDB via the API.
 3. **Every data query is scoped to the signed-in user.** New collections need an owner field and `requireUser()`.
+3a. **Loans are not transactions.** Never count loan money as income or spending; it only affects the balance via `loanCashEvents`. "Sending home" stays an expense category (planned monthly outflow).
 4. **API responses** use `ok()` / `fail()` / `dbErrorResponse()` from `lib/api.ts`; validate with explicit, human-readable messages; wrap DB calls in try/catch.
 5. **Amounts:** sign encodes type (expense < 0); round with `toPaise`; display with `money()`/`signedMoney()`/`moneyWhole()` (INR, `en-IN`). Never hardcode `₹` or `$`; use `CURRENCY_SYMBOL`.
 6. **Destructive or modifying actions on existing records require a confirm dialog** (`ConfirmDialog`).
@@ -455,6 +498,8 @@ For isolated tests use a **temporary local MongoDB** (`mongod --dbpath <tmp> --p
 | 2026-10-31 | Transaction rows: swipe-left actions (View/Edit/Delete) instead of tap-to-edit; tap also toggles for desktop/accessibility | User request |
 | 2026-10-31 | Added real categories home, fuel, friend, rent, education, gifts, personal behind a "Show more" tile (Other moved there). A short-lived `subcategory` field was removed (no data used it) | User request: categories only, no sub-levels; they work in budgets and analytics too |
 | 2026-10-31 | Balance is anchored in time: only transactions dated ≥ `balanceAsOf` change it; anchor truncated to the minute; legacy docs fall back to `updatedAt` | User request. Fixes double-counting when a user enters their current balance after already logging transactions |
+| 2026-11-02 | **Loans** feature (lend & borrow) as its own tab; replaces Accounts in the nav (Accounts via "View All"). Repay in full or monthly/partial; optional total-to-repay (interest), due date, monthly plan. No EMI amortisation or interest maths yet | User request. Money lent/borrowed must not distort budget or income |
+| 2026-11-02 | "Sending home" stays an **expense** | User decision: regular planned monthly outflow, budgetable |
 | 2026-10-31 | Upgraded Next 15.5.28 / React 19.1.10 / Mongoose 8.24.x | Security advisories; Vercel deploy block |
 
 ---
@@ -469,4 +514,5 @@ For isolated tests use a **temporary local MongoDB** (`mongod --dbpath <tmp> --p
 - Transactions list capped at 1000 per user (no pagination).
 - Shared DB across preview/dev/prod (see §5).
 - No account deletion or profile edit UI.
+- Loans phase 2: interest rate and EMI schedule/amortisation, missed-instalment detection (today only past `dueDate` = Overdue), due-date reminders, link a repayment to a transaction.
 - Cleanup pending: test user `test.user@ledgerly-demo.dev`; legacy `settings` doc `key:"default"`.

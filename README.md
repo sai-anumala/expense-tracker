@@ -11,6 +11,7 @@ A mobile-first expense tracker built with **Next.js 15 (App Router)**, **Tailwin
 - **Add / edit transactions** — expense or income, category, date & time picker, payment method; edits and deletes require confirmation
 - **Budgets** — overall monthly limit and per-category limits
 - **Analytics** — week / month / year totals vs previous period, category breakdown, top merchants, 4-week trend, CSV export
+- **Loans** — track money lent to / borrowed from friends, relatives, apps and banks; partial or full repayments, optional interest, due date and monthly plan (affects balance, never income or spending)
 - **Accounts** — totals per payment method and full history
 - Amounts in **INR (₹)** with Indian digit grouping
 
@@ -42,6 +43,8 @@ Check the connection at `GET /api/health`.
 | PUT / DELETE | `/api/transactions/:id` | Update / delete a transaction |
 | GET / PUT | `/api/budget` | Monthly and category limits |
 | GET / PUT | `/api/settings` | Opening balance |
+| GET / POST · PUT / DELETE | `/api/loans` · `/api/loans/:id` | Loans |
+| POST · DELETE | `/api/loans/:id/payments` · `…/payments/:paymentId` | Record / undo a repayment |
 | GET | `/api/health` | Database connectivity |
 
 Responses use `{ success, payload }` or `{ success: false, error }`. All routes except auth and health require a session and only touch the signed-in user's data.
@@ -53,7 +56,7 @@ src/
   app/            pages (/, /add, /budgets, /analytics, /accounts) and API routes
   components/     UI pieces (date picker, confirm dialog, amount form, nav)
   lib/            store (client data), db connection, validation, formatting, insights
-  models/         Mongoose models: User, Transaction, Budget, Settings
+  models/         Mongoose models: User, Transaction, Budget, Settings, Loan
   middleware.ts   redirects signed-out visitors to /login
 design/           Stitch screenshots and DESIGN.md
 ```
