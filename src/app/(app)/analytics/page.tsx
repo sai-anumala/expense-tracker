@@ -5,7 +5,7 @@ import { CalendarDays, TrendingDown, TrendingUp, Lightbulb, Download, ChartSplin
 import { AppHeader, IconTile } from "@/components/ui";
 import { TabPage } from "@/components/BottomNav";
 import { EmptyState } from "@/components/TransactionRow";
-import { categories, type Transaction } from "@/lib/data";
+import { categories, type CategoryId, type Transaction } from "@/lib/data";
 import { useAppData } from "@/lib/store";
 import {
   categoryInsight,
@@ -31,6 +31,10 @@ export default function Analytics() {
   const change = prevTotal > 0 ? ((total - prevTotal) / prevTotal) * 100 : null;
   const [whole, cents] = money(total).replace(CURRENCY_SYMBOL, "").split(".");
   const breakdown = spentByCategory(current);
+  // Ring interaction: hovered/tapped slice (falls back to the top category if it isn't in this range).
+  const [active, setActive] = useState<CategoryId | null>(null);
+  const activeSlice = breakdown.find((b) => b.category === active) ?? null;
+  const shown = activeSlice ?? breakdown[0];
   const merchants = topMerchants(current);
   const weeks = weeklySpend(transactions);
   const weekTarget = budget.monthlyLimit > 0 ? (budget.monthlyLimit * 12) / 52 : 0;
@@ -109,7 +113,8 @@ export default function Analytics() {
           </section>
         )}
 
-        {current.length === 0 ? (
+        {/* Guard on expenses (not all transactions): an income-only period has nothing to chart. */}
+        {breakdown.length === 0 || !shown ? (
           <EmptyState
             icon={ChartSpline}
             title={`No spending this ${range}`}
@@ -122,22 +127,37 @@ export default function Analytics() {
               <h2 className="text-[22px] font-semibold tracking-tight">Category Breakdown</h2>
               <p className="text-sm text-on-surface-variant">Where your money went this {range}</p>
               <div className="relative mx-auto my-6 size-56">
-                <Donut data={breakdown.map((b) => ({ ...b, color: categories[b.category].color }))} total={total} />
-                <div className="absolute inset-0 grid place-content-center px-8 text-center">
-                  <p className="label-caps text-on-surface-variant">Top Category</p>
-                  <p className="text-xl font-semibold">{categories[breakdown[0].category].long}</p>
-                  <p className="tabular-nums text-primary">
-                    {Math.round((breakdown[0].amount / total) * 100)}% ({money(breakdown[0].amount)})
+                <Donut
+                  data={breakdown.map((b) => ({ ...b, color: categories[b.category].color }))}
+                  total={total}
+                  active={shown.category}
+                  onActive={setActive}
+                />
+                {/* Centre label: the hovered/tapped slice, otherwise the top category. Doesn't block the ring. */}
+                <div className="pointer-events-none absolute inset-0 grid place-content-center px-10 text-center" aria-live="polite">
+                  <p className="label-caps text-on-surface-variant">{activeSlice ? "Selected" : "Top Category"}</p>
+                  <p className="text-lg leading-tight font-semibold">{categories[shown.category].long}</p>
+                  <p className="mt-0.5 text-sm tabular-nums" style={{ color: categories[shown.category].color }}>
+                    {Math.round((shown.amount / total) * 100)}% · {money(shown.amount)}
                   </p>
                 </div>
               </div>
+              <p className="-mt-3 mb-3 text-center text-xs text-on-surface-variant">Tap or hover a slice to see its category.</p>
               {/* One category per row: full name, amount, share and a thin bar in the category colour */}
               <ul className="divide-y divide-surface-container rounded-xl bg-surface-container-low px-4">
                 {breakdown.map((c) => {
                   const share = total > 0 ? c.amount / total : 0;
                   const color = categories[c.category].color;
                   return (
-                    <li key={c.category} className="py-3">
+                    <li
+                      key={c.category}
+                      onMouseEnter={() => setActive(c.category)}
+                      onMouseLeave={() => setActive(null)}
+                      onClick={() => setActive((a) => (a === c.category ? null : c.category))}
+                      className={`cursor-pointer py-3 transition ${
+                        activeSlice && activeSlice.category !== c.category ? "opacity-50" : ""
+                      }`}
+                    >
                       <div className="flex items-center gap-3">
                         <span className="size-3 shrink-0 rounded-full" style={{ background: color }} aria-hidden />
                         <span className="min-w-0 flex-1 text-sm font-medium break-words">{categories[c.category].long}</span>
@@ -221,13 +241,23 @@ function downloadTransactionsCsv(list: Transaction[]) {
   downloadCsv(`ledgerly-transactions-${todayStamp()}.csv`, rows);
 }
 
-function Donut({ data, total }: { data: { category: string; amount: number; color: string }[]; total: number }) {
+function Donut({
+  data,
+  total,
+  active,
+  onActive,
+}: {
+  data: { category: CategoryId; amount: number; color: string }[];
+  total: number;
+  active: CategoryId | null;
+  onActive: (c: CategoryId | null | ((prev: CategoryId | null) => CategoryId | null)) => void;
+}) {
   const r = 42;
   const c = 2 * Math.PI * r;
   const gap = data.length > 1 ? 1.2 : 0;
   let offset = 0;
   return (
-    <svg viewBox="0 0 100 100" className="size-full -rotate-90" role="img" aria-label="Spending by category">
+    <svg viewBox="0 0 100 100" className="size-full -rotate-90 overflow-visible" aria-label="Spending by category">
       {data.map((d) => {
         const len = (d.amount / total) * c;
         const el = (
@@ -238,12 +268,23 @@ function Donut({ data, total }: { data: { category: string; amount: number; colo
             r={r}
             fill="none"
             stroke={d.color}
-            strokeWidth="10"
+            strokeWidth={active === d.category ? 13 : 10}
             strokeLinecap={data.length > 1 ? "round" : "butt"}
             strokeDasharray={`${Math.max(0, len - gap)} ${c}`}
             strokeDashoffset={-offset}
+            opacity={active && active !== d.category ? 0.35 : 1}
+            role="button"
+            tabIndex={0}
+            aria-label={`${categories[d.category]?.long}: ${money(d.amount)}, ${Math.round((d.amount / total) * 100)}%`}
+            aria-pressed={active === d.category}
+            onMouseEnter={() => onActive(d.category)}
+            onMouseLeave={() => onActive(null)}
+            onFocus={() => onActive(d.category)}
+            onBlur={() => onActive(null)}
+            onClick={() => onActive((a) => (a === d.category ? null : d.category))}
+            className="cursor-pointer outline-none transition-[stroke-width,opacity] duration-150"
           >
-            <title>{`${categories[d.category as keyof typeof categories]?.long}: ${money(d.amount)}`}</title>
+            <title>{`${categories[d.category]?.long}: ${money(d.amount)}`}</title>
           </circle>
         );
         offset += len;

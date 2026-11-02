@@ -69,7 +69,7 @@ export default function Dashboard() {
   const insight = categoryInsight(transactions);
 
   const groups = new Map<string, Transaction[]>();
-  for (const t of transactions.slice(0, 8)) {
+  for (const t of transactions.slice(0, 5)) { // latest 5 only
     const k = dayBucket(t.date);
     groups.set(k, [...(groups.get(k) ?? []), t]);
   }

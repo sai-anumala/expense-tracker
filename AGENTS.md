@@ -342,7 +342,7 @@ All computed client-side in pages using `lib/insights.ts`. "This month" = local 
 | Status pill | used = spent / limit: `< 0.85` "On track", `≤ 1` "Watch spend", else "Over budget" (only if a budget is set) |
 | Monthly Budget bar | `% used = spent / limit`; "Daily safe pace" = `max(0, remaining) / daysLeft` |
 | `daysLeft` | days left in the month **including today** (31 Oct → 1) |
-| Recent transactions | latest 8, grouped Today / Yesterday / "Oct 28"; group header shows net |
+| Recent transactions | latest **5**, grouped Today / Yesterday / "Oct 28"; group header shows net. Amounts: **expense red** (`text-secondary`), **income green** (`text-primary`) |
 | Insight tip | biggest % change vs last month in a category present both months; hidden if none |
 
 Balance entry: if `null`, the card asks "How much money do you have right now?". The ✎ opens pre-filled with the **current** balance; saving re-anchors (new amount, `balanceAsOf` = now). The value is stored exactly as typed. Hovering the balance shows when it was set.
@@ -371,7 +371,7 @@ Reference scenario (from the spec): budget 3,000, spent 1,830.40 → Remaining 1
 ### Analytics page
 - Range tabs Week / Month / Year → current period vs previous period of the same length; % change shown if previous > 0.
 - "Under/Over budget by" only on Month with a budget.
-- Donut = expense share by category (colors from `categories[id].color`). Below it, **one row per category** (full name, amount, % share, thin bar in the category colour); no truncated two-column chips. Top merchants = top 3 by spend (case-insensitive merchant name).
+- Donut = expense share by category (colors from `categories[id].color`). **Interactive:** hover, focus or tap a slice (or a row below) to show that category's name, % and amount in the centre (default: top category); the active slice thickens and others fade. The centre label is `pointer-events-none` so it doesn't block the ring. The breakdown section is shown only when the period has **expenses** (income-only periods show the empty state; this used to crash). Below it, **one row per category** (full name, amount, % share, thin bar in the category colour); no truncated two-column chips. Top merchants = top 3 by spend (case-insensitive merchant name).
 - Weekly trend = last 4 Monday-start weeks; dashed target = `monthlyLimit × 12 / 52` (if a budget is set).
 - CSV export: all transactions, newest first → `Date, Type, Merchant / note, Category, Payment method, Amount (INR)` (see "CSV exports" below).
 
@@ -521,6 +521,7 @@ For isolated tests use a **temporary local MongoDB** (`mongod --dbpath <tmp> --p
 | 2026-10-31 | Balance is anchored in time: only transactions dated ≥ `balanceAsOf` change it; anchor truncated to the minute; legacy docs fall back to `updatedAt` | User request. Fixes double-counting when a user enters their current balance after already logging transactions |
 | 2026-11-02 | **Loans** feature (lend & borrow) as its own tab; replaces Accounts in the nav (Accounts via "View All"). Repay in full or monthly/partial; optional total-to-repay (interest), due date, monthly plan. No EMI amortisation or interest maths yet | User request. Money lent/borrowed must not distort budget or income |
 | 2026-11-02 | Loan CSVs (kept simple on request): all-loans summary at the end of the Loans tab + passbook-style per-person statement on loan detail; transactions CSV switched to readable dates via shared `lib/csv.ts` | User request |
+| 2026-11-02 | Recent transactions = latest 5; expense amounts red, income green; interactive analytics ring | User request |
 | 2026-11-02 | Swipe actions extracted into `SwipeActions`; used for transactions and category budgets. Analytics breakdown as full-width rows | User request (overlapping text on small phones; truncated names) |
 | 2026-11-02 | CSV dates DD/MM/YYYY; non-blocking low-balance warnings (expense, lending, repaying) + budget info notices | User request; warn instead of block because real life allows overdraft/credit |
 | 2026-11-02 | "Sending home" stays an **expense** | User decision: regular planned monthly outflow, budgetable |

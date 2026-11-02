@@ -70,7 +70,7 @@ export function TransactionRow({ t }: { t: Transaction }) {
           </p>
         </div>
         <span
-          className={`shrink-0 text-[17px] font-semibold tabular-nums ${income ? "text-primary" : "text-on-surface"}`}
+          className={`shrink-0 text-[17px] font-semibold tabular-nums ${income ? "text-primary" : "text-secondary"}`}
         >
           {signedMoney(t.amount)}
         </span>
@@ -145,7 +145,7 @@ function TransactionDetails({ t, onClose, onEdit }: { t: Transaction; onClose: (
           </button>
         </div>
 
-        <p className={`mt-4 text-3xl font-bold tracking-tight tabular-nums ${income ? "text-primary" : "text-on-surface"}`}>
+        <p className={`mt-4 text-3xl font-bold tracking-tight tabular-nums ${income ? "text-primary" : "text-secondary"}`}>
           {income ? "+" : "-"}
           {money(t.amount)}
         </p>
