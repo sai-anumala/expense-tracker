@@ -3,18 +3,17 @@
 
 type Cell = string | number | null | undefined;
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const pad = (n: number) => String(n).padStart(2, "0");
 
-/** Readable local date-time for spreadsheets, e.g. "02-Nov-2026 09:15". */
+/** Local date-time for spreadsheets in DD/MM/YYYY HH:mm, e.g. "02/11/2026 09:15". */
 export function csvDateTime(iso: string | Date | undefined | null) {
   if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  return `${pad(d.getDate())}-${MONTHS[d.getMonth()]}-${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-/** Readable local date only, e.g. "02-Nov-2026". */
+/** Local date only in DD/MM/YYYY, e.g. "02/11/2026". */
 export function csvDate(iso: string | Date | undefined | null) {
   return csvDateTime(iso).split(" ")[0] ?? "";
 }

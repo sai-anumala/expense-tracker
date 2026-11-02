@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { SlidersHorizontal, CircleCheck, Plus, PieChart, Trash2 } from "lucide-react";
 import { AmountForm } from "@/components/AmountForm";
+import { BalanceNotice } from "@/components/BalanceNotice";
+import { availableBalance } from "@/lib/balance";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { errorMessage } from "@/lib/store";
 import { AppHeader, IconTile, MonthPill, ProgressBar } from "@/components/ui";
@@ -11,7 +13,7 @@ import { EmptyState } from "@/components/TransactionRow";
 import { categories, pickableCategories, type CategoryId } from "@/lib/data";
 import { useAppData } from "@/lib/store";
 import { periodBounds, spentByCategory, totalSpent, within } from "@/lib/insights";
-import { daysLeftInMonth, money, monthLabel, plural } from "@/lib/format";
+import { daysLeftInMonth, money, moneySigned, monthLabel, plural } from "@/lib/format";
 
 function status(ratio: number) {
   if (ratio > 1) return { warn: true, badge: "Over limit" };
@@ -21,7 +23,7 @@ function status(ratio: number) {
 }
 
 export default function Budgets() {
-  const { transactions, budget, saveBudget } = useAppData();
+  const { transactions, budget, saveBudget, loans, settings } = useAppData();
   const [editingLimit, setEditingLimit] = useState(false);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,6 +36,11 @@ export default function Budgets() {
   const limit = budget.monthlyLimit;
   const remaining = limit - spent;
   const daysLeft = daysLeftInMonth();
+  // Informational checks (never block saving).
+  const available = availableBalance(transactions, loans, settings);
+  const budgetAboveBalance = limit > 0 && available !== null && limit > available;
+  const categoryTotal = budget.categories.reduce((s, c) => s + c.limit, 0);
+  const categoriesAboveLimit = limit > 0 && categoryTotal > limit;
   const unbudgeted = pickableCategories.filter((c) => !budget.categories.some((b) => b.category === c));
 
   async function confirmRemove() {
@@ -138,6 +145,14 @@ export default function Budgets() {
               </div>
             </>
           )}
+          {budgetAboveBalance && available !== null && (
+            <div className="mt-4">
+              <BalanceNotice tone="info">
+                Your monthly budget (<b className="tabular-nums">{money(limit)}</b>) is more than your available balance (
+                <b className="tabular-nums">{moneySigned(available)}</b>). Make sure money is coming in before you spend it all.
+              </BalanceNotice>
+            </div>
+          )}
         </section>
 
         {/* Category budgets */}
@@ -149,6 +164,14 @@ export default function Budgets() {
                 ? `${budget.categories.length} ${budget.categories.length === 1 ? "category" : "categories"} with limits`
                 : "Set limits for individual categories"}
             </p>
+            {categoriesAboveLimit && (
+              <div className="mt-2">
+                <BalanceNotice tone="info">
+                  Category budgets add up to <b className="tabular-nums">{money(categoryTotal)}</b>, which is more than your{" "}
+                  <b className="tabular-nums">{money(limit)}</b> monthly budget.
+                </BalanceNotice>
+              </div>
+            )}
           </div>
 
           {budget.categories.length === 0 && !adding ? (

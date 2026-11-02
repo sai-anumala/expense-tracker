@@ -27,6 +27,8 @@ import {
   type CategoryId,
 } from "@/lib/data";
 import { errorMessage, useAppData } from "@/lib/store";
+import { availableBalance, shortfall } from "@/lib/balance";
+import { BalanceNotice, ShortfallText } from "@/components/BalanceNotice";
 import { sanitizeAmount } from "@/components/AmountForm";
 import { CURRENCY_SYMBOL, money, moneyWhole } from "@/lib/format";
 
@@ -47,7 +49,7 @@ export default function AddPage() {
 function AddTransaction() {
   const router = useRouter();
   const params = useSearchParams();
-  const { add, update, remove, transactions } = useAppData();
+  const { add, update, remove, transactions, loans, settings } = useAppData();
 
   // ?id=… → edit an existing transaction; otherwise add a new one.
   const editId = params.get("id");
@@ -73,6 +75,9 @@ function AddTransaction() {
 
   const value = Number.parseFloat(amount) || 0;
   const tooLarge = value > MAX_AMOUNT;
+  // Low-balance warning (non-blocking): only for expenses, ignoring this transaction's old amount when editing.
+  const available = availableBalance(transactions, loans, settings, { transactionId: existing?.id });
+  const short = kind === "expense" ? shortfall(available, value, when, settings.balanceAsOf) : null;
   const bump = (n: number) => setAmount((value + n).toFixed(2));
   const accountOptions = paymentMethods.includes(account) ? paymentMethods : [account, ...paymentMethods];
 
@@ -181,6 +186,13 @@ function AddTransaction() {
             <p role="alert" className="mt-3 text-sm text-secondary">
               That amount is too large.
             </p>
+          )}
+          {short && !tooLarge && (
+            <div className="mt-3">
+              <BalanceNotice>
+                <ShortfallText available={short.available} after={short.after} verb="This expense" />
+              </BalanceNotice>
+            </div>
           )}
         </section>
 

@@ -193,6 +193,7 @@ src/
 │  ├─ ConfirmDialog.tsx          <dialog> Yes/Cancel modal (danger variant, busy state)
 │  ├─ DateTimePicker.tsx         Field + compact centered calendar/time pop-up; formatWhen(); future dates disabled
 │  ├─ AuthForm.tsx               Login/Signup form; safeNext() prevents open redirects
+│  ├─ BalanceNotice.tsx          Non-blocking warn/info notice + ShortfallText wording
 │  └─ UserMenu.tsx               Initials avatar → menu (name, email, Log out); initials()
 ├─ lib/
 │  ├─ store.tsx      (client)    TransactionsProvider, useAppData, api() fetch helper, ApiError, errorMessage()
@@ -205,6 +206,7 @@ src/
 │  ├─ auth.ts        (server)    getSession, requireUser, set/clearSessionCookie
 │  ├─ authInput.ts   (server)    validateEmail/Password/Name, normalizeEmail
 │  ├─ transactionInput.ts (server) parseTransactionInput (all tx validation), toTransactionDto
+│  ├─ balance.ts                 availableBalance (excl. edited record), shortfall (low-balance check)
 │  ├─ csv.ts         (client)    csvDateTime/csvDate/csvAmount, toCsv (escaping + injection guard), slug, downloadCsv (BOM)
 │  ├─ loanExport.ts              loansSummaryRows, personStatementRows (pure; used by Loans CSV buttons)
 │  ├─ loans.ts                   (shared) Loan types, loanStatus, nextPaymentDate, loanCashEvents, loanTotals, source labels
@@ -347,6 +349,13 @@ Examples: entered ₹10,000 at 4:30 PM → a ₹500 expense dated 2 PM is ignore
 
 Reference scenario (from the spec): budget 3,000, spent 1,830.40 → Remaining 1,169.60; 12 days left → 97.46/day.
 
+### Low-balance warnings (`lib/balance.ts`, `components/BalanceNotice.tsx`)
+- **Never block saving**; amber "warn" or neutral "info" notice only.
+- `availableBalance(transactions, loans, settings, {transactionId?, loanId?})` = current Total Available Balance, excluding the record being edited (no double counting); `null` when no balance is set → no warnings.
+- `shortfall(available, outflow, date, balanceAsOf)` warns when money **going out** exceeds what's available, only if the item is dated ≥ `balanceAsOf` (earlier items don't change the balance).
+- Where: **Add/Edit expense** (under the amount), **I lent** loan form (under the amount), **repayment of a borrowed loan** (loan detail). Income and money received back never warn. Wording via `ShortfallText` (handles an already-negative balance).
+- **Budgets (info):** monthly budget > available balance; category budgets total > monthly budget.
+
 ### Loans (lend & borrow)
 - **Never income or spending:** loans don't touch Income, Spent, Remaining, budgets or analytics. They only move Total Available Balance (and only when dated ≥ `balanceAsOf`).
 - `paid = Σ payments`, `outstanding = max(0, totalDue − paid)`, **settled** when outstanding = 0, `progress = paid / totalDue`.
@@ -367,7 +376,7 @@ Reference scenario (from the spec): budget 3,000, spent 1,830.40 → Remaining 1
 
 ### CSV exports (`lib/csv.ts`, `lib/loanExport.ts`)
 - Generated **in the browser** from loaded data (no server call). UTF-8 **with BOM** (Excel shows non-Latin names), CRLF rows.
-- Dates: local, readable `02-Nov-2026 09:15` (`csvDateTime`) or `02-Nov-2026` (`csvDate`). Amounts: plain numbers with 2 decimals, no ₹ or grouping (`csvAmount`); expenses negative.
+- Dates inside files: local **`DD/MM/YYYY HH:mm`** (`csvDateTime`, e.g. `02/11/2026 09:15`) or **`DD/MM/YYYY`** (`csvDate`). File names keep `YYYY-MM-DD` so they sort. Amounts: plain numbers with 2 decimals, no ₹ or grouping (`csvAmount`); expenses negative.
 - Formula-injection guard: text cells starting with `= + - @` get a leading `'` (pure numbers like `-5000.00` are left numeric).
 - Files (loan CSVs are intentionally **simple**: few columns, date only):
   - `ledgerly-transactions-YYYY-MM-DD.csv` (Analytics): Date, Type, Merchant / note, Category, Payment method, Amount (INR).
@@ -426,7 +435,7 @@ Tokens are defined in `src/app/globals.css` under `@theme` and used as Tailwind 
 3. **Every data query is scoped to the signed-in user.** New collections need an owner field and `requireUser()`.
 3a. **Loans are not transactions.** Never count loan money as income or spending; it only affects the balance via `loanCashEvents`. "Sending home" stays an expense category (planned monthly outflow).
 4. **API responses** use `ok()` / `fail()` / `dbErrorResponse()` from `lib/api.ts`; validate with explicit, human-readable messages; wrap DB calls in try/catch.
-5. **Amounts:** sign encodes type (expense < 0); round with `toPaise`; display with `money()`/`signedMoney()`/`moneyWhole()` (INR, `en-IN`). Never hardcode `₹` or `$`; use `CURRENCY_SYMBOL`.
+5. **Amounts:** sign encodes type (expense < 0); round with `toPaise`; display with `money()`/`signedMoney()`/`moneySigned()` (balances)/`moneyWhole()` (INR, `en-IN`). Never hardcode `₹` or `$`; use `CURRENCY_SYMBOL`.
 6. **Destructive or modifying actions on existing records require a confirm dialog** (`ConfirmDialog`).
 7. Categories (`categories`, `primaryCategories`, `moreCategories`, `pickableCategories`), payment methods and `DEFAULT_PAYMENT_METHOD` are defined once in `lib/data.ts`. Keep `CATEGORY_IDS` in `models/Transaction.ts` in sync. Adding a category = add it to `CategoryId`, `categories` (label, long name, icon, tone, chart color), one of the two lists, and `CATEGORY_IDS`.
 8. Keep `MAX_AMOUNT` (1e10) in sync: `lib/api.ts`, `components/AmountForm.tsx`, `app/(app)/add/page.tsx`.
@@ -511,6 +520,7 @@ For isolated tests use a **temporary local MongoDB** (`mongod --dbpath <tmp> --p
 | 2026-10-31 | Balance is anchored in time: only transactions dated ≥ `balanceAsOf` change it; anchor truncated to the minute; legacy docs fall back to `updatedAt` | User request. Fixes double-counting when a user enters their current balance after already logging transactions |
 | 2026-11-02 | **Loans** feature (lend & borrow) as its own tab; replaces Accounts in the nav (Accounts via "View All"). Repay in full or monthly/partial; optional total-to-repay (interest), due date, monthly plan. No EMI amortisation or interest maths yet | User request. Money lent/borrowed must not distort budget or income |
 | 2026-11-02 | Loan CSVs (kept simple on request): all-loans summary at the end of the Loans tab + passbook-style per-person statement on loan detail; transactions CSV switched to readable dates via shared `lib/csv.ts` | User request |
+| 2026-11-02 | CSV dates DD/MM/YYYY; non-blocking low-balance warnings (expense, lending, repaying) + budget info notices | User request; warn instead of block because real life allows overdraft/credit |
 | 2026-11-02 | "Sending home" stays an **expense** | User decision: regular planned monthly outflow, budgetable |
 | 2026-10-31 | Upgraded Next 15.5.28 / React 19.1.10 / Mongoose 8.24.x | Security advisories; Vercel deploy block |
 

@@ -11,6 +11,8 @@ import { sanitizeAmount } from "@/components/AmountForm";
 import { DEFAULT_PAYMENT_METHOD, paymentMethods } from "@/lib/data";
 import { LOAN_SOURCES, loanSourceLabels, loanStatus, type LoanDirection, type LoanSource } from "@/lib/loans";
 import { errorMessage, useAppData, type LoanInput } from "@/lib/store";
+import { availableBalance, shortfall } from "@/lib/balance";
+import { BalanceNotice, ShortfallText } from "@/components/BalanceNotice";
 import { CURRENCY_SYMBOL, money } from "@/lib/format";
 
 const MAX_AMOUNT = 10_000_000_000; // keep in sync with src/lib/api.ts
@@ -33,7 +35,7 @@ export default function NewLoanPage() {
 function LoanForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const { loans, addLoan, updateLoan } = useAppData();
+  const { loans, addLoan, updateLoan, transactions, settings } = useAppData();
 
   const editId = params.get("id");
   const existing = editId ? loans.find((l) => l.id === editId) : undefined;
@@ -61,6 +63,10 @@ function LoanForm() {
   const total = totalDue ? Number.parseFloat(totalDue) || 0 : value;
   const lent = direction === "lent";
   const accountOptions = paymentMethods.includes(account) ? paymentMethods : [account, ...paymentMethods];
+  // Lending takes money out of your balance: warn (non-blocking) if it's more than you have.
+  // When editing, ignore this loan's own effect so it isn't counted twice.
+  const available = availableBalance(transactions, loans, settings, { loanId: existing?.id });
+  const short = lent ? shortfall(available, value, when, settings.balanceAsOf) : null;
 
   function validate(): string | null {
     if (!person.trim()) return lent ? "Who did you lend to?" : "Who did you borrow from?";
@@ -190,6 +196,13 @@ function LoanForm() {
             />
           </label>
           <p className="mt-1 text-xs text-on-surface-variant">Only if interest or fees make it more than the amount.</p>
+          {short && (
+            <div className="mt-3">
+              <BalanceNotice>
+                <ShortfallText available={short.available} after={short.after} verb="Lending this" />
+              </BalanceNotice>
+            </div>
+          )}
         </section>
 
         {/* Who */}

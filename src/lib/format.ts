@@ -14,6 +14,11 @@ export function moneyWhole(n: number) {
   return inrWhole.format(Math.abs(n));
 }
 
+/** Amount with a minus only when negative, e.g. ₹4,200.00 or -₹800.00 (for balances). */
+export function moneySigned(n: number) {
+  return `${n < 0 ? "-" : ""}${money(n)}`;
+}
+
 export function signedMoney(n: number) {
   return `${n < 0 ? "-" : "+"}${money(n)}`;
 }
