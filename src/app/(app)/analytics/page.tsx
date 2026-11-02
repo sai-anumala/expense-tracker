@@ -17,6 +17,7 @@ import {
   within,
   type Range,
 } from "@/lib/insights";
+import { csvAmount, csvDateTime, downloadCsv, todayStamp } from "@/lib/csv";
 import { CURRENCY_SYMBOL, money, moneyWhole } from "@/lib/format";
 
 export default function Analytics() {
@@ -176,7 +177,7 @@ export default function Analytics() {
         </section>
 
         <button
-          onClick={() => downloadCsv(transactions)}
+          onClick={() => downloadTransactionsCsv(transactions)}
           disabled={transactions.length === 0}
           className="flex w-full items-center justify-center gap-3 rounded-xl bg-surface-container-low py-4 disabled:opacity-50"
         >
@@ -187,18 +188,22 @@ export default function Analytics() {
   );
 }
 
-function downloadCsv(list: Transaction[]) {
-  const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
+/** Transactions CSV: readable local dates, plain-number amounts (expense negative), newest first. */
+function downloadTransactionsCsv(list: Transaction[]) {
   const rows = [
-    ["Date", "Merchant", "Category", "Account", "Amount (INR)"],
-    ...list.map((t) => [t.date, t.merchant, categories[t.category]?.long ?? t.category, t.account ?? "", t.amount.toFixed(2)]),
+    ["Date", "Type", "Merchant / note", "Category", "Payment method", "Amount (INR)"],
+    ...[...list]
+      .sort((a, b) => +new Date(b.date) - +new Date(a.date))
+      .map((t) => [
+        csvDateTime(t.date),
+        t.amount < 0 ? "Expense" : "Income",
+        t.merchant,
+        categories[t.category]?.long ?? t.category,
+        t.account ?? "",
+        csvAmount(t.amount),
+      ]),
   ];
-  const blob = new Blob([rows.map((r) => r.map(esc).join(",")).join("\n")], { type: "text/csv" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = `ledgerly-transactions-${new Date().toISOString().slice(0, 10)}.csv`;
-  a.click();
-  URL.revokeObjectURL(a.href);
+  downloadCsv(`ledgerly-transactions-${todayStamp()}.csv`, rows);
 }
 
 function Donut({ data, total }: { data: { category: string; amount: number; color: string }[]; total: number }) {

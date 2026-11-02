@@ -2,13 +2,15 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { ArrowDownLeft, ArrowUpRight, HandCoins, CalendarClock, ChevronRight } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, HandCoins, CalendarClock, ChevronRight, Download } from "lucide-react";
 import { AppHeader, ProgressBar } from "@/components/ui";
 import { TabPage } from "@/components/BottomNav";
 import { EmptyState } from "@/components/TransactionRow";
 import { useAppData } from "@/lib/store";
 import { loanSourceLabels, loanStatus, loanTotals, type Loan } from "@/lib/loans";
 import { money, plural } from "@/lib/format";
+import { downloadCsv, todayStamp } from "@/lib/csv";
+import { loansSummaryRows } from "@/lib/loanExport";
 
 const shortDate = (d: Date | string) =>
   new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
@@ -71,6 +73,14 @@ export default function Loans() {
         <p className="-mt-3 px-1 text-xs text-on-surface-variant">
           Loans change your Total Available Balance but never count as income or spending.
         </p>
+
+        <button
+          onClick={() => downloadCsv(`ledgerly-loans-${todayStamp()}.csv`, loansSummaryRows(loans))}
+          disabled={loans.length === 0}
+          className="flex w-full items-center justify-center gap-2 rounded-xl border border-outline-variant py-2.5 text-sm font-medium transition hover:bg-surface-container-low disabled:opacity-50"
+        >
+          <Download className="size-4" aria-hidden /> Download all loans (CSV)
+        </button>
 
         <div role="tablist" className="grid grid-cols-2 rounded-full bg-surface-container-high p-1.5">
           {(["open", "settled"] as const).map((t) => (

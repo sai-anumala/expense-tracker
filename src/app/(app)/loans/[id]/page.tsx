@@ -13,6 +13,7 @@ import {
   Pencil,
   Trash2,
   BadgeCheck,
+  Download,
 } from "lucide-react";
 import { UserMenu } from "@/components/UserMenu";
 import { ProgressBar } from "@/components/ui";
@@ -23,6 +24,8 @@ import { DEFAULT_PAYMENT_METHOD, paymentMethods } from "@/lib/data";
 import { loanSourceLabels, loanStatus, type LoanPayment } from "@/lib/loans";
 import { errorMessage, useAppData } from "@/lib/store";
 import { CURRENCY_SYMBOL, money } from "@/lib/format";
+import { downloadCsv, slug, todayStamp } from "@/lib/csv";
+import { personStatementRows } from "@/lib/loanExport";
 
 const longDate = (d: Date | string) =>
   new Date(d).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
@@ -259,6 +262,23 @@ export default function LoanDetail() {
             </ul>
           )}
         </section>
+
+        <button
+          onClick={() =>
+            downloadCsv(`ledgerly-${slug(loan.person)}-statement-${todayStamp()}.csv`, personStatementRows(loans, loan.person))
+          }
+          className="flex w-full items-center justify-center gap-2 rounded-xl border border-outline-variant py-3 font-medium transition hover:bg-surface-container-low"
+        >
+          <Download className="size-4" aria-hidden /> Download {loan.person}&apos;s statement (CSV)
+        </button>
+        {(() => {
+          const others = loans.filter((l) => l.id !== loan.id && l.person.trim().toLowerCase() === loan.person.trim().toLowerCase()).length;
+          return others > 0 ? (
+            <p className="-mt-3 px-1 text-center text-xs text-on-surface-variant">
+              Includes {others} other {others === 1 ? "loan" : "loans"} with {loan.person}.
+            </p>
+          ) : null;
+        })()}
 
         <div className="grid grid-cols-2 gap-2">
           <Link

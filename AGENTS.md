@@ -205,6 +205,8 @@ src/
 │  ├─ auth.ts        (server)    getSession, requireUser, set/clearSessionCookie
 │  ├─ authInput.ts   (server)    validateEmail/Password/Name, normalizeEmail
 │  ├─ transactionInput.ts (server) parseTransactionInput (all tx validation), toTransactionDto
+│  ├─ csv.ts         (client)    csvDateTime/csvDate/csvAmount, toCsv (escaping + injection guard), slug, downloadCsv (BOM)
+│  ├─ loanExport.ts              loansSummaryRows, personStatementRows (pure; used by Loans CSV buttons)
 │  ├─ loans.ts                   (shared) Loan types, loanStatus, nextPaymentDate, loanCashEvents, loanTotals, source labels
 │  └─ loanInput.ts   (server)    parseLoanInput, parsePaymentInput, toLoanDto
 └─ models/  User.ts · Transaction.ts · Budget.ts · Settings.ts · Loan.ts
@@ -361,7 +363,13 @@ Reference scenario (from the spec): budget 3,000, spent 1,830.40 → Remaining 1
 - "Under/Over budget by" only on Month with a budget.
 - Donut = expense share by category (colors from `categories[id].color`). Top merchants = top 3 by spend (case-insensitive merchant name).
 - Weekly trend = last 4 Monday-start weeks; dashed target = `monthlyLimit × 12 / 52` (if a budget is set).
-- CSV export: all transactions → `Date, Merchant, Category, Account, Amount (INR)`.
+- CSV export: all transactions, newest first → `Date, Type, Merchant / note, Category, Payment method, Amount (INR)` (see "CSV exports" below).
+
+### CSV exports (`lib/csv.ts`, `lib/loanExport.ts`)
+- Generated **in the browser** from loaded data (no server call). UTF-8 **with BOM** (Excel shows non-Latin names), CRLF rows.
+- Dates: local, readable `02-Nov-2026 09:15` (`csvDateTime`) or `02-Nov-2026` (`csvDate`). Amounts: plain numbers with 2 decimals, no ₹ or grouping (`csvAmount`); expenses negative.
+- Formula-injection guard: text cells starting with `= + - @` get a leading `'` (pure numbers like `-5000.00` are left numeric).
+- Files: `ledgerly-transactions-YYYY-MM-DD.csv` (Analytics), `ledgerly-loans-YYYY-MM-DD.csv` (Loans tab, `loansSummaryRows`: one row per loan with Person, Type, Source, Date, Amount, Total to repay, Repaid, Outstanding, Status Open/Overdue/Settled, Repay by, Monthly payment, Payment day, Next payment, Repayments count, Last repayment, Payment method, Note), `ledgerly-<person>-statement-YYYY-MM-DD.csv` (loan detail, `personStatementRows`: **all loans with the same person name, case-insensitive**, oldest first, one row per loan start or repayment with Cash effect, Outstanding on that loan, running Net position (+ they owe you / − you owe them), then a Summary row).
 
 ### Accounts page
 - Net amount per `account` (payment method; "Unspecified" if empty); tap to filter the history.
@@ -378,9 +386,9 @@ Reference scenario (from the spec): budget 3,000, spent 1,830.40 → Remaining 1
 - **Transaction rows** (Overview recent list, Accounts history): **swipe left** (touch or mouse drag) or **tap / Enter** to reveal three actions: **View** (read-only details pop-up with an Edit button), **Edit** (`/add?id=…`), **Delete** (confirm dialog, "Yes, delete"). Only one row is open at a time (window event `ledgerly:row-open`); vertical scrolling stays native (`touch-action: pan-y`). Rows no longer navigate on tap.
 - **Monthly Budget card:** app font with tabular digits; the spent/cap row and the "Daily safe pace" row wrap on narrow phones, with "N days left" in its own pill so they never collide.
 - **Budgets:** Set Limit (inline AmountForm), add category budget (chips + amount), remove → confirm dialog.
-- **Loans tab** (`/loans`): summary cards, **I lent money** / **I borrowed** buttons → `/loans/new?dir=…`, Open/Settled tabs, cards with progress bar, Overdue badge, next payment and repay-by date. Tap → detail.
+- **Loans tab** (`/loans`): summary cards, **I lent money** / **I borrowed** buttons → `/loans/new?dir=…`, **Download all loans (CSV)**, Open/Settled tabs, cards with progress bar, Overdue badge, next payment and repay-by date. Tap → detail.
 - **Loan form** (`/loans/new`, `?id=` to edit): I lent / I borrowed tabs, big amount, optional **Total to repay** (interest/fees), name, source chips (Friend, Relative, Online app, Bank, Other), date (DateTimePicker), payment method (default UPI), optional **Repay by** (native date input), optional **Monthly repayment plan** (amount + day 1–28), note. Edit → confirm dialog.
-- **Loan detail** (`/loans/[id]`): outstanding (hero), progress, details (dates, plan, next payment, note); **Record repayment** with **Settle in full · ₹X** and **Monthly · ₹Y** quick-fill chips, date, method, note → confirm ("Record & settle loan" when it clears the balance); repayment history with remove (confirm); Edit loan; Delete loan (danger confirm).
+- **Loan detail** (`/loans/[id]`): outstanding (hero), progress, details (dates, plan, next payment, note); **Record repayment** with **Settle in full · ₹X** and **Monthly · ₹Y** quick-fill chips, date, method, note → confirm ("Record & settle loan" when it clears the balance); repayment history with remove (confirm); **Download <person>'s statement (CSV)** (covers every loan with that person; a hint shows how many others are included); Edit loan; Delete loan (danger confirm).
 - **Header:** logo + subtitle, bell (no-op), UserMenu (initials → name/email/Log out).
 - **Bottom nav:** Overview, Analytics, [+ FAB → /add], Budgets, **Loans**. Accounts is reached via "View All" on Recent Transactions. Quick actions: Add Expense, Add Income, Lend / Borrow, Budgets.
 - **Loading:** spinner. **Load error:** "Couldn't load your data" + reason + Try again. **Empty states** on every list.
@@ -499,6 +507,7 @@ For isolated tests use a **temporary local MongoDB** (`mongod --dbpath <tmp> --p
 | 2026-10-31 | Added real categories home, fuel, friend, rent, education, gifts, personal behind a "Show more" tile (Other moved there). A short-lived `subcategory` field was removed (no data used it) | User request: categories only, no sub-levels; they work in budgets and analytics too |
 | 2026-10-31 | Balance is anchored in time: only transactions dated ≥ `balanceAsOf` change it; anchor truncated to the minute; legacy docs fall back to `updatedAt` | User request. Fixes double-counting when a user enters their current balance after already logging transactions |
 | 2026-11-02 | **Loans** feature (lend & borrow) as its own tab; replaces Accounts in the nav (Accounts via "View All"). Repay in full or monthly/partial; optional total-to-repay (interest), due date, monthly plan. No EMI amortisation or interest maths yet | User request. Money lent/borrowed must not distort budget or income |
+| 2026-11-02 | Loan CSVs: global summary on Loans tab + per-person statement on loan detail; transactions CSV switched to readable dates via shared `lib/csv.ts` | User request |
 | 2026-11-02 | "Sending home" stays an **expense** | User decision: regular planned monthly outflow, budgetable |
 | 2026-10-31 | Upgraded Next 15.5.28 / React 19.1.10 / Mongoose 8.24.x | Security advisories; Vercel deploy block |
 
