@@ -176,6 +176,7 @@ src/
 │  ├─ (app)/accounts/page.tsx    Totals per payment method + full history with filter (reached via "View All")
 │  ├─ (app)/loans/page.tsx       Loans tab: You'll get / You owe, I lent / I borrowed buttons, Open/Settled lists
 │  ├─ (app)/loans/new/page.tsx   Create or edit (`?id=`) a loan; `?dir=lent|borrowed` preselect
+│  ├─ (app)/transfer/page.tsx    "Coming soon" Transfer screen (animated illustration, what's coming list)
 │  ├─ (app)/loans/[id]/page.tsx  Loan detail: progress, record repayment / Settle in full, history, edit, delete
 │  └─ api/
 │     ├─ health/route.ts         GET public status {db, auth}; never leaks error details
@@ -371,7 +372,8 @@ Reference scenario (from the spec): budget 3,000, spent 1,830.40 → Remaining 1
 ### Analytics page
 - Range tabs Week / Month / Year → current period vs previous period of the same length; % change shown if previous > 0.
 - "Under/Over budget by" only on Month with a budget.
-- Donut = expense share by category (colors from `categories[id].color`). **Interactive:** hover, focus or tap a slice (or a row below) to show that category's name, % and amount in the centre (default: top category); the active slice thickens and others fade. The centre label is `pointer-events-none` so it doesn't block the ring. The breakdown section is shown only when the period has **expenses** (income-only periods show the empty state; this used to crash). Below it, **one row per category** (full name, amount, % share, thin bar in the category colour); no truncated two-column chips. Top merchants = top 3 by spend (case-insensitive merchant name).
+- Donut = expense share by category. **Colours come from a validated palette applied in ring order** (largest slice first): `#2a78d6 #eb6834 #1baf7a #eda100 #e87ba4 #008300 #6250d6` (dataviz validator on white: adjacent CVD ΔE ≥ 9.1, normal-vision ΔE ≥ 19.6; low-contrast slots are fine because every slice has a text label). **Max 7 named slices**; the rest fold into a grey `#b4bac3` "More categories (n)" slice whose legend row lists its members (a single leftover keeps its own name). Flat ends with a small gap between slices. `categories[id].color` is no longer used by the ring.
+- **Focus:** nothing is highlighted by default (centre shows the top category). Mouse: hover focuses, leaving resets. Touch: tap toggles; tapping outside the chart and list resets. Keyboard: Tab (focus-visible) focuses, Enter/Space toggles, Esc resets. The focused slice thickens (11→15) and others fade to 30%; the legend dims the other rows. Handlers live in `focusHandlers()` (per pointer type, so a phone tap's hover+focus+click don't cancel each other). The centre label is `pointer-events-none`. The breakdown is shown only when the period has **expenses** (income-only periods show the empty state). Below the ring: **one row per slice** (full name, amount, %, thin bar in the slice colour).
 - Weekly trend = last 4 Monday-start weeks; dashed target = `monthlyLimit × 12 / 52` (if a budget is set).
 - CSV export: all transactions, newest first → `Date, Type, Merchant / note, Category, Payment method, Amount (INR)` (see "CSV exports" below).
 
@@ -403,7 +405,8 @@ Reference scenario (from the spec): budget 3,000, spent 1,830.40 → Remaining 1
 - **Loan form** (`/loans/new`, `?id=` to edit): I lent / I borrowed tabs, big amount, optional **Total to repay** (interest/fees), name, source chips (Friend, Relative, Online app, Bank, Other), date (DateTimePicker), payment method (default UPI), optional **Repay by** (native date input), optional **Monthly repayment plan** (amount + day 1–28), note. Edit → confirm dialog.
 - **Loan detail** (`/loans/[id]`): outstanding (hero), progress, details (dates, plan, next payment, note); **Record repayment** with **Settle in full · ₹X** and **Monthly · ₹Y** quick-fill chips, date, method, note → confirm ("Record & settle loan" when it clears the balance); repayment history with remove (confirm); **Download <person>'s statement (CSV)** (covers every loan with that person; a hint shows how many others are included); Edit loan; Delete loan (danger confirm).
 - **Header:** logo + subtitle, bell (no-op), UserMenu (initials → name/email/Log out).
-- **Bottom nav:** Overview, Analytics, [+ FAB → /add], Budgets, **Loans**. Accounts is reached via "View All" on Recent Transactions. Quick actions: Add Expense, Add Income, Lend / Borrow, Budgets.
+- **Bottom nav:** Overview, Analytics, [+ FAB → /add], Budgets, **Loans**. Accounts is reached via "View All" on Recent Transactions. Quick actions: Add Expense, Add Income, Lend / Borrow, **Transfer** (with a "Soon" badge → `/transfer`).
+- **Transfer** (`/transfer`): "Coming soon" placeholder for moving money between your own accounts (bank ↔ wallet/UPI, ATM withdrawals, card bill payments; never counted as spending). Animated: coins travelling bank → wallet, floating icons, shimmering badge, staggered fade-up list. All animations use `motion-safe:` (keyframes `ledgerly-*` in `globals.css`), so "reduce motion" users get a static page. Not in the bottom nav (a 6th item would crowd small phones).
 - **Loading:** spinner. **Load error:** "Couldn't load your data" + reason + Try again. **Empty states** on every list.
 - **Errors:** forms show server messages inline (`role="alert"`); network → "You're offline…" / "Can't reach the server…"; 15 s request timeout.
 
@@ -521,6 +524,8 @@ For isolated tests use a **temporary local MongoDB** (`mongod --dbpath <tmp> --p
 | 2026-10-31 | Balance is anchored in time: only transactions dated ≥ `balanceAsOf` change it; anchor truncated to the minute; legacy docs fall back to `updatedAt` | User request. Fixes double-counting when a user enters their current balance after already logging transactions |
 | 2026-11-02 | **Loans** feature (lend & borrow) as its own tab; replaces Accounts in the nav (Accounts via "View All"). Repay in full or monthly/partial; optional total-to-repay (interest), due date, monthly plan. No EMI amortisation or interest maths yet | User request. Money lent/borrowed must not distort budget or income |
 | 2026-11-02 | Loan CSVs (kept simple on request): all-loans summary at the end of the Loans tab + passbook-style per-person statement on loan detail; transactions CSV switched to readable dates via shared `lib/csv.ts` | User request |
+| 2026-11-02 | Analytics ring: validated palette in ring order, top 7 + "More categories", fixed always-on focus bug (top slice was always highlighted), per-input focus handling | User feedback (colours not pleasant; only the selected slice should be focused) |
+| 2026-11-02 | Transfer "Coming soon" page via Overview quick action (not the nav) | User request; nav space |
 | 2026-11-02 | Recent transactions = latest 5; expense amounts red, income green; interactive analytics ring | User request |
 | 2026-11-02 | Swipe actions extracted into `SwipeActions`; used for transactions and category budgets. Analytics breakdown as full-width rows | User request (overlapping text on small phones; truncated names) |
 | 2026-11-02 | CSV dates DD/MM/YYYY; non-blocking low-balance warnings (expense, lending, repaying) + budget info notices | User request; warn instead of block because real life allows overdraft/credit |
@@ -539,5 +544,6 @@ For isolated tests use a **temporary local MongoDB** (`mongod --dbpath <tmp> --p
 - Transactions list capped at 1000 per user (no pagination).
 - Shared DB across preview/dev/prod (see §5).
 - No account deletion or profile edit UI.
+- **Transfer** (own-account moves: bank ↔ wallet/UPI, ATM cash, card bill payments) is a placeholder only.
 - Loans phase 2: interest rate and EMI schedule/amortisation, missed-instalment detection (today only past `dueDate` = Overdue), due-date reminders, link a repayment to a transaction.
 - Cleanup pending: test user `test.user@ledgerly-demo.dev`; legacy `settings` doc `key:"default"`.

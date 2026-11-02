@@ -14,6 +14,7 @@ import {
   CirclePlus,
   Banknote,
   HandCoins,
+  ArrowLeftRight,
   ChevronRight,
   Lightbulb,
   ReceiptText,
@@ -30,10 +31,10 @@ import { loanCashEvents, loanTotals } from "@/lib/loans";
 import { anchoredBalance, categoryInsight, net, periodBounds, totalIncome, totalSpent, within } from "@/lib/insights";
 import { dayBucket, daysLeftInMonth, plural, money, monthLabel } from "@/lib/format";
 
-const quickActions = [
+const quickActions: { label: string; icon: typeof CirclePlus; href: string; accent?: boolean; soon?: boolean }[] = [
   { label: "Add Expense", icon: CirclePlus, href: "/add", accent: true },
   { label: "Add Income", icon: Banknote, href: "/add?kind=income" },
-  { label: "Budgets", icon: PieChart, href: "/budgets" },
+  { label: "Transfer", icon: ArrowLeftRight, href: "/transfer", soon: true },
   { label: "Lend / Borrow", icon: HandCoins, href: "/loans/new" },
 ];
 
@@ -255,12 +256,17 @@ export default function Dashboard() {
         <section>
           <h2 className="label-caps mb-3 px-1 text-on-surface-variant">Quick Actions</h2>
           <div className="grid grid-cols-4 gap-2">
-            {quickActions.map(({ label, icon: Icon, href, accent }) => (
+            {quickActions.map(({ label, icon: Icon, href, accent, soon }) => (
               <Link
                 key={label}
                 href={href}
-                className="card flex flex-col items-center gap-2 px-1 py-4 text-center text-sm transition hover:-translate-y-0.5"
+                className="card relative flex flex-col items-center gap-2 px-1 py-4 text-center text-sm transition hover:-translate-y-0.5"
               >
+                {soon && (
+                  <span className="absolute top-1.5 right-1.5 rounded-full bg-primary-fixed px-1.5 py-px text-[9px] font-bold tracking-wide text-primary uppercase">
+                    Soon
+                  </span>
+                )}
                 <span
                   className={`grid size-12 place-items-center rounded-full ${
                     accent ? "bg-primary-fixed/50 text-primary" : "bg-surface-container-high"

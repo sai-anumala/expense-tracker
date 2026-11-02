@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CalendarDays, TrendingDown, TrendingUp, Lightbulb, Download, ChartSpline } from "lucide-react";
 import { AppHeader, IconTile } from "@/components/ui";
 import { TabPage } from "@/components/BottomNav";
@@ -31,10 +31,22 @@ export default function Analytics() {
   const change = prevTotal > 0 ? ((total - prevTotal) / prevTotal) * 100 : null;
   const [whole, cents] = money(total).replace(CURRENCY_SYMBOL, "").split(".");
   const breakdown = spentByCategory(current);
-  // Ring interaction: hovered/tapped slice (falls back to the top category if it isn't in this range).
-  const [active, setActive] = useState<CategoryId | null>(null);
-  const activeSlice = breakdown.find((b) => b.category === active) ?? null;
-  const shown = activeSlice ?? breakdown[0];
+  // Ring: top 7 categories + "More categories" (rest folded), coloured in ring order from a
+  // colour-blind-checked palette. `active` = hovered/tapped slice key, or null (nothing focused).
+  const slices = ringSlices(breakdown);
+  const [active, setActive] = useState<string | null>(null);
+  const activeSlice = slices.find((sl) => sl.key === active) ?? null;
+  const shown = activeSlice ?? slices[0];
+  const chartRef = useRef<HTMLDivElement>(null);
+  // Tap/click anywhere outside the chart + list clears the selection.
+  useEffect(() => {
+    if (!active) return;
+    const onDown = (e: PointerEvent) => {
+      if (!chartRef.current?.contains(e.target as Node)) setActive(null);
+    };
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
+  }, [active]);
   const merchants = topMerchants(current);
   const weeks = weeklySpend(transactions);
   const weekTarget = budget.monthlyLimit > 0 ? (budget.monthlyLimit * 12) / 52 : 0;
@@ -126,55 +138,56 @@ export default function Analytics() {
             <section className="card p-5">
               <h2 className="text-[22px] font-semibold tracking-tight">Category Breakdown</h2>
               <p className="text-sm text-on-surface-variant">Where your money went this {range}</p>
-              <div className="relative mx-auto my-6 size-56">
-                <Donut
-                  data={breakdown.map((b) => ({ ...b, color: categories[b.category].color }))}
-                  total={total}
-                  active={shown.category}
-                  onActive={setActive}
-                />
-                {/* Centre label: the hovered/tapped slice, otherwise the top category. Doesn't block the ring. */}
-                <div className="pointer-events-none absolute inset-0 grid place-content-center px-10 text-center" aria-live="polite">
-                  <p className="label-caps text-on-surface-variant">{activeSlice ? "Selected" : "Top Category"}</p>
-                  <p className="text-lg leading-tight font-semibold">{categories[shown.category].long}</p>
-                  <p className="mt-0.5 text-sm tabular-nums" style={{ color: categories[shown.category].color }}>
-                    {Math.round((shown.amount / total) * 100)}% · {money(shown.amount)}
-                  </p>
+              <div ref={chartRef}>
+                <div className="relative mx-auto my-6 size-56">
+                  <Donut slices={slices} total={total} active={active} onActive={setActive} />
+                  {/* Centre label: focused slice, otherwise the top category. Doesn't block the ring. */}
+                  <div className="pointer-events-none absolute inset-0 grid place-content-center px-10 text-center" aria-live="polite">
+                    <p className="label-caps text-on-surface-variant">{activeSlice ? "Selected" : "Top Category"}</p>
+                    <p className="text-lg leading-tight font-semibold">{shown.label}</p>
+                    <p className="mt-0.5 text-sm font-medium tabular-nums text-on-surface-variant">
+                      {pct(shown.amount, total)} · {money(shown.amount)}
+                    </p>
+                  </div>
                 </div>
-              </div>
-              <p className="-mt-3 mb-3 text-center text-xs text-on-surface-variant">Tap or hover a slice to see its category.</p>
-              {/* One category per row: full name, amount, share and a thin bar in the category colour */}
-              <ul className="divide-y divide-surface-container rounded-xl bg-surface-container-low px-4">
-                {breakdown.map((c) => {
-                  const share = total > 0 ? c.amount / total : 0;
-                  const color = categories[c.category].color;
-                  return (
-                    <li
-                      key={c.category}
-                      onMouseEnter={() => setActive(c.category)}
-                      onMouseLeave={() => setActive(null)}
-                      onClick={() => setActive((a) => (a === c.category ? null : c.category))}
-                      className={`cursor-pointer py-3 transition ${
-                        activeSlice && activeSlice.category !== c.category ? "opacity-50" : ""
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="size-3 shrink-0 rounded-full" style={{ background: color }} aria-hidden />
-                        <span className="min-w-0 flex-1 text-sm font-medium break-words">{categories[c.category].long}</span>
-                        <span className="shrink-0 text-right">
-                          <span className="block text-sm font-semibold tabular-nums">{money(c.amount)}</span>
-                          <span className="block text-xs tabular-nums text-on-surface-variant">
-                            {share < 0.01 && share > 0 ? "<1" : Math.round(share * 100)}%
+                <p className="-mt-3 mb-3 text-center text-xs text-on-surface-variant">Tap or hover a slice to see its category.</p>
+                {/* Legend: one row per slice, same colours and order as the ring */}
+                <ul className="divide-y divide-surface-container rounded-xl bg-surface-container-low px-4">
+                  {slices.map((sl) => {
+                    const share = total > 0 ? sl.amount / total : 0;
+                    const dim = activeSlice && activeSlice.key !== sl.key;
+                    return (
+                      <li
+                        key={sl.key}
+                        {...focusHandlers(sl.key, setActive)}
+                        role="button"
+                        tabIndex={0}
+                        aria-pressed={activeSlice?.key === sl.key}
+                        className={`cursor-pointer py-3 outline-none focus-visible:ring-2 focus-visible:ring-primary transition-opacity duration-150 ${dim ? "opacity-45" : ""}`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="size-3 shrink-0 rounded-full" style={{ background: sl.color }} aria-hidden />
+                          <span className="min-w-0 flex-1 text-sm font-medium break-words">
+                            {sl.label}
+                            {sl.members && (
+                              <span className="block text-xs font-normal text-on-surface-variant">
+                                {sl.members.map((m) => categories[m].long).join(", ")}
+                              </span>
+                            )}
                           </span>
-                        </span>
-                      </div>
-                      <div className="mt-2 ml-6 h-1.5 overflow-hidden rounded-full bg-surface-container-high">
-                        <div className="h-full rounded-full" style={{ width: `${Math.max(2, share * 100)}%`, background: color }} />
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
+                          <span className="shrink-0 text-right">
+                            <span className="block text-sm font-semibold tabular-nums">{money(sl.amount)}</span>
+                            <span className="block text-xs tabular-nums text-on-surface-variant">{pct(sl.amount, total)}</span>
+                          </span>
+                        </div>
+                        <div className="mt-2 ml-6 h-1.5 overflow-hidden rounded-full bg-surface-container-high">
+                          <div className="h-full rounded-full" style={{ width: `${Math.max(2, share * 100)}%`, background: sl.color }} />
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
             </section>
 
             {/* Merchants */}
@@ -241,50 +254,118 @@ function downloadTransactionsCsv(list: Transaction[]) {
   downloadCsv(`ledgerly-transactions-${todayStamp()}.csv`, rows);
 }
 
+/**
+ * Categorical palette for the ring, applied in ring order (largest slice first). Validated with the dataviz
+ * validator on white: adjacent CVD ΔE ≥ 9.1, normal-vision ΔE ≥ 19.6. Light slots < 3:1 contrast are fine
+ * because every slice has a visible text label in the legend.
+ */
+const RING_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6"];
+const MORE_COLOR = "#b4bac3"; // neutral grey for the folded "More categories" slice
+
+type Slice = { key: string; label: string; amount: number; color: string; members?: CategoryId[] };
+
+/** Top 7 categories by spend get palette slots; the rest fold into one "More categories" slice. */
+function ringSlices(breakdown: { category: CategoryId; amount: number }[]): Slice[] {
+  const top = breakdown.slice(0, RING_COLORS.length).map((b, i) => ({
+    key: b.category,
+    label: categories[b.category].long,
+    amount: b.amount,
+    color: RING_COLORS[i],
+  }));
+  const rest = breakdown.slice(RING_COLORS.length);
+  if (rest.length === 0) return top;
+  if (rest.length === 1) {
+    return [...top, { key: rest[0].category, label: categories[rest[0].category].long, amount: rest[0].amount, color: MORE_COLOR }];
+  }
+  return [
+    ...top,
+    {
+      key: "__more__",
+      label: `More categories (${rest.length})`,
+      amount: rest.reduce((s, r) => s + r.amount, 0),
+      color: MORE_COLOR,
+      members: rest.map((r) => r.category),
+    },
+  ];
+}
+
+type SetActive = (k: string | null | ((prev: string | null) => string | null)) => void;
+
+/**
+ * Focus behaviour per input type (a phone tap fires hover+focus+click, so they must not fight):
+ * mouse → hover focuses, leaving resets; touch/pen → tap toggles; keyboard → focus-visible focuses,
+ * Enter/Space toggles, blur resets.
+ */
+function focusHandlers(key: string, setActive: SetActive) {
+  return {
+    onPointerEnter: (e: React.PointerEvent) => {
+      if (e.pointerType === "mouse") setActive(key);
+    },
+    onPointerLeave: (e: React.PointerEvent) => {
+      if (e.pointerType === "mouse") setActive(null);
+    },
+    onPointerUp: (e: React.PointerEvent) => {
+      if (e.pointerType !== "mouse") setActive((a) => (a === key ? null : key));
+    },
+    onFocus: (e: React.FocusEvent<Element>) => {
+      if (e.currentTarget.matches(":focus-visible")) setActive(key);
+    },
+    onBlur: () => setActive((a) => (a === key ? null : a)),
+    onKeyDown: (e: React.KeyboardEvent) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        setActive((a) => (a === key ? null : key));
+      } else if (e.key === "Escape") setActive(null);
+    },
+  };
+}
+
+const pct = (part: number, total: number) => {
+  const p = total > 0 ? (part / total) * 100 : 0;
+  return p > 0 && p < 1 ? "<1%" : `${Math.round(p)}%`;
+};
+
 function Donut({
-  data,
+  slices,
   total,
   active,
   onActive,
 }: {
-  data: { category: CategoryId; amount: number; color: string }[];
+  slices: Slice[];
   total: number;
-  active: CategoryId | null;
-  onActive: (c: CategoryId | null | ((prev: CategoryId | null) => CategoryId | null)) => void;
+  active: string | null;
+  onActive: SetActive;
 }) {
-  const r = 42;
+  const r = 40;
   const c = 2 * Math.PI * r;
-  const gap = data.length > 1 ? 1.2 : 0;
+  const gap = slices.length > 1 ? 1.4 : 0; // small surface gap between slices (flat ends, no overlap)
   let offset = 0;
   return (
     <svg viewBox="0 0 100 100" className="size-full -rotate-90 overflow-visible" aria-label="Spending by category">
-      {data.map((d) => {
-        const len = (d.amount / total) * c;
+      {slices.map((sl) => {
+        const len = (sl.amount / total) * c;
+        const isActive = active === sl.key;
+        const dim = active !== null && !isActive;
         const el = (
           <circle
-            key={d.category}
+            key={sl.key}
             cx="50"
             cy="50"
             r={r}
             fill="none"
-            stroke={d.color}
-            strokeWidth={active === d.category ? 13 : 10}
-            strokeLinecap={data.length > 1 ? "round" : "butt"}
-            strokeDasharray={`${Math.max(0, len - gap)} ${c}`}
+            stroke={sl.color}
+            strokeWidth={isActive ? 15 : 11}
+            strokeDasharray={`${Math.max(0.01, len - gap)} ${c}`}
             strokeDashoffset={-offset}
-            opacity={active && active !== d.category ? 0.35 : 1}
+            opacity={dim ? 0.3 : 1}
             role="button"
             tabIndex={0}
-            aria-label={`${categories[d.category]?.long}: ${money(d.amount)}, ${Math.round((d.amount / total) * 100)}%`}
-            aria-pressed={active === d.category}
-            onMouseEnter={() => onActive(d.category)}
-            onMouseLeave={() => onActive(null)}
-            onFocus={() => onActive(d.category)}
-            onBlur={() => onActive(null)}
-            onClick={() => onActive((a) => (a === d.category ? null : d.category))}
-            className="cursor-pointer outline-none transition-[stroke-width,opacity] duration-150"
+            aria-label={`${sl.label}: ${money(sl.amount)}, ${pct(sl.amount, total)}`}
+            aria-pressed={isActive}
+            {...focusHandlers(sl.key, onActive)}
+            className="cursor-pointer outline-none transition-[stroke-width,opacity] duration-200 ease-out"
           >
-            <title>{`${categories[d.category]?.long}: ${money(d.amount)}`}</title>
+            <title>{`${sl.label}: ${money(sl.amount)}`}</title>
           </circle>
         );
         offset += len;
