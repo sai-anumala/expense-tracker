@@ -74,14 +74,6 @@ export default function Loans() {
           Loans change your Total Available Balance but never count as income or spending.
         </p>
 
-        <button
-          onClick={() => downloadCsv(`ledgerly-loans-${todayStamp()}.csv`, loansSummaryRows(loans))}
-          disabled={loans.length === 0}
-          className="flex w-full items-center justify-center gap-2 rounded-xl border border-outline-variant py-2.5 text-sm font-medium transition hover:bg-surface-container-low disabled:opacity-50"
-        >
-          <Download className="size-4" aria-hidden /> Download all loans (CSV)
-        </button>
-
         <div role="tablist" className="grid grid-cols-2 rounded-full bg-surface-container-high p-1.5">
           {(["open", "settled"] as const).map((t) => (
             <button
@@ -116,6 +108,16 @@ export default function Loans() {
               </li>
             ))}
           </ul>
+        )}
+
+        {/* At the very end: export every loan (lent and borrowed) */}
+        {loans.length > 0 && (
+          <button
+            onClick={() => downloadCsv(`ledgerly-loans-${todayStamp()}.csv`, loansSummaryRows(loans))}
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-surface-container-low py-4 font-medium transition hover:bg-surface-container"
+          >
+            <Download className="size-5" aria-hidden /> Download all loans (CSV)
+          </button>
         )}
       </TabPage>
     </>
