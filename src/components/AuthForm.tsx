@@ -55,16 +55,22 @@ export function AuthForm({ mode }: { mode: Mode }) {
   return (
     <main className="flex min-h-dvh flex-col justify-center px-5 py-10">
       <div className="mb-8 flex flex-col items-center text-center">
-        <Logo />
-        <h1 className="mt-4 text-[28px] leading-9 font-semibold tracking-tight">
+        <span className="motion-safe:animate-[ledgerly-pop_0.6s_cubic-bezier(0.34,1.56,0.64,1)_both]">
+          <Logo />
+        </span>
+        <h1 className="mt-4 text-[28px] leading-9 font-semibold tracking-tight motion-safe:animate-[ledgerly-fade-up_0.5s_ease-out_0.15s_both]">
           {isSignup ? "Create your account" : "Welcome back"}
         </h1>
-        <p className="mt-1 text-on-surface-variant">
+        <p className="mt-1 text-on-surface-variant motion-safe:animate-[ledgerly-fade-up_0.5s_ease-out_0.25s_both]">
           {isSignup ? "Track spending, budgets and balances in one place." : "Log in to your Ledgerly account."}
         </p>
       </div>
 
-      <form onSubmit={submit} noValidate className="card relative space-y-3 overflow-hidden p-5">
+      <form
+        onSubmit={submit}
+        noValidate
+        className="card relative space-y-3 overflow-hidden p-5 motion-safe:animate-[ledgerly-fade-up_0.55s_ease-out_0.35s_both]"
+      >
         <div className="pointer-events-none absolute -top-8 -right-8 size-32 rounded-full bg-primary/10 blur-2xl" />
 
         {isSignup && (
@@ -134,7 +140,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
         </button>
       </form>
 
-      <p className="mt-6 text-center text-on-surface-variant">
+      <p className="mt-6 text-center text-on-surface-variant motion-safe:animate-[ledgerly-fade-in_0.5s_ease-out_0.55s_both]">
         {isSignup ? "Already have an account? " : "New to Ledgerly? "}
         <Link
           href={`${isSignup ? "/login" : "/signup"}${next !== "/" ? `?next=${encodeURIComponent(next)}` : ""}`}

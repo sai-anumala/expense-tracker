@@ -195,6 +195,7 @@ src/
 │  ├─ ConfirmDialog.tsx          <dialog> Yes/Cancel modal (danger variant, busy state)
 │  ├─ DateTimePicker.tsx         Field + compact centered calendar/time pop-up; formatWhen(); future dates disabled
 │  ├─ AuthForm.tsx               Login/Signup form; safeNext() prevents open redirects
+│  ├─ Splash.tsx                 Launch splash (logo pop, ring pulse, name + tagline, progress line)
 │  ├─ BalanceNotice.tsx          Non-blocking warn/info notice + ShortfallText wording
 │  └─ UserMenu.tsx               Initials avatar → menu (name, email, Log out); initials()
 ├─ lib/
@@ -406,8 +407,9 @@ Reference scenario (from the spec): budget 3,000, spent 1,830.40 → Remaining 1
 - **Loan detail** (`/loans/[id]`): outstanding (hero), progress, details (dates, plan, next payment, note); **Record repayment** with **Settle in full · ₹X** and **Monthly · ₹Y** quick-fill chips, date, method, note → confirm ("Record & settle loan" when it clears the balance); repayment history with remove (confirm); **Download <person>'s statement (CSV)** (covers every loan with that person; a hint shows how many others are included); Edit loan; Delete loan (danger confirm).
 - **Header:** logo + subtitle, bell (no-op), UserMenu (initials → name/email/Log out).
 - **Bottom nav:** Overview, Analytics, [+ FAB → /add], Budgets, **Loans**. Accounts is reached via "View All" on Recent Transactions. Quick actions: Add Expense, Add Income, Lend / Borrow, **Transfer** (with a "Soon" badge → `/transfer`).
-- **Transfer** (`/transfer`): "Coming soon" placeholder for moving money between your own accounts (bank ↔ wallet/UPI, ATM withdrawals, card bill payments; never counted as spending). Animated: coins travelling bank → wallet, floating icons, shimmering badge, staggered fade-up list. All animations use `motion-safe:` (keyframes `ledgerly-*` in `globals.css`), so "reduce motion" users get a static page. Not in the bottom nav (a 6th item would crowd small phones).
-- **Loading:** spinner. **Load error:** "Couldn't load your data" + reason + Try again. **Empty states** on every list.
+- **Transfer** (`/transfer`): "Coming soon" placeholder for moving money between your own accounts (bank ↔ wallet/UPI, ATM withdrawals, card bill payments; never counted as spending). Animated: coins travelling bank → wallet, floating icons, shimmering badge, staggered fade-up list. All animations use `motion-safe:` (keyframes `ledgerly-travel/float/shimmer/fade-up/dash/pop/ring/progress/fade-in` in `globals.css`), so "reduce motion" users get a static page. Not in the bottom nav (a 6th item would crowd small phones).
+- **Launch splash** (`components/Splash.tsx`): while the signed-in app loads, the logo tile pops in (spring), one soft ring pulse, "Ledgerly" + tagline "Track every rupee, calmly." slide up, a thin progress line glides; shown for **at least 800 ms** (`introDone` in the provider) so it finishes, longer only if data is still loading; then the app fades in (0.4 s). Plays on app open only (the `(app)` layout persists across tabs). Login/Sign-up get the same entrance (logo pop, staggered fade-up). All `motion-safe:`.
+- **Loading:** the launch splash (above). **Load error:** "Couldn't load your data" + reason + Try again. **Empty states** on every list.
 - **Errors:** forms show server messages inline (`role="alert"`); network → "You're offline…" / "Can't reach the server…"; 15 s request timeout.
 
 ---
@@ -525,6 +527,7 @@ For isolated tests use a **temporary local MongoDB** (`mongod --dbpath <tmp> --p
 | 2026-11-02 | **Loans** feature (lend & borrow) as its own tab; replaces Accounts in the nav (Accounts via "View All"). Repay in full or monthly/partial; optional total-to-repay (interest), due date, monthly plan. No EMI amortisation or interest maths yet | User request. Money lent/borrowed must not distort budget or income |
 | 2026-11-02 | Loan CSVs (kept simple on request): all-loans summary at the end of the Loans tab + passbook-style per-person statement on loan detail; transactions CSV switched to readable dates via shared `lib/csv.ts` | User request |
 | 2026-11-02 | Analytics ring: validated palette in ring order, top 7 + "More categories", fixed always-on focus bug (top slice was always highlighted), per-input focus handling | User feedback (colours not pleasant; only the selected slice should be focused) |
+| 2026-11-02 | Launch splash + app fade-in; auth screens entrance animation (motion-safe, ≥ 800 ms) | User request: clean, attractive opening |
 | 2026-11-02 | Transfer "Coming soon" page via Overview quick action (not the nav) | User request; nav space |
 | 2026-11-02 | Recent transactions = latest 5; expense amounts red, income green; interactive analytics ring | User request |
 | 2026-11-02 | Swipe actions extracted into `SwipeActions`; used for transactions and category budgets. Analytics breakdown as full-width rows | User request (overlapping text on small phones; truncated names) |

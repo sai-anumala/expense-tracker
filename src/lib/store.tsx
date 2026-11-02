@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { DatabaseZap, RotateCw } from "lucide-react";
+import { Splash } from "@/components/Splash";
 import { emptyBudget, emptySettings, type Budget, type Settings, type Transaction } from "./data";
 import type { Loan } from "./loans";
 
@@ -107,6 +108,13 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
   const [settings, setSettings] = useState<Settings>(emptySettings);
   const [loans, setLoans] = useState<Loan[]>([]);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  // Keep the launch splash up for a short minimum so its animation can finish (only on app open;
+  // the (app) layout persists across tab navigation, so this doesn't replay).
+  const [introDone, setIntroDone] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setIntroDone(true), 800);
+    return () => clearTimeout(t);
+  }, []);
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
@@ -243,13 +251,8 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     }
   }, []);
 
-  if (status === "loading" || (status === "ready" && !user)) {
-    return (
-      <div className="grid min-h-dvh place-items-center bg-surface" aria-busy="true" aria-live="polite">
-        <span className="size-8 animate-spin rounded-full border-2 border-surface-container-high border-t-primary" />
-        <span className="sr-only">Loading your data…</span>
-      </div>
-    );
+  if (status === "loading" || (status === "ready" && !user) || (status === "ready" && !introDone)) {
+    return <Splash />;
   }
 
   if (status === "error") {
@@ -293,7 +296,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
         removePayment,
       }}
     >
-      {children}
+      <div className="motion-safe:animate-[ledgerly-fade-in_0.4s_ease-out_both]">{children}</div>
     </AppDataContext.Provider>
   );
 }
