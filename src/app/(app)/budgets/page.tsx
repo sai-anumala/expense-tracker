@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { SlidersHorizontal, CircleCheck, Plus, PieChart, Trash2 } from "lucide-react";
+import { SlidersHorizontal, CircleCheck, Plus, PieChart, Trash2, Pencil } from "lucide-react";
 import { AmountForm } from "@/components/AmountForm";
+import { SwipeActions } from "@/components/SwipeActions";
 import { BalanceNotice } from "@/components/BalanceNotice";
 import { availableBalance } from "@/lib/balance";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -28,6 +29,7 @@ export default function Budgets() {
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [removing, setRemoving] = useState<CategoryId | null>(null);
+  const [editingCat, setEditingCat] = useState<CategoryId | null>(null);
   const [busy, setBusy] = useState(false);
 
   const monthTx = within(transactions, periodBounds("month"));
@@ -164,6 +166,9 @@ export default function Budgets() {
                 ? `${budget.categories.length} ${budget.categories.length === 1 ? "category" : "categories"} with limits`
                 : "Set limits for individual categories"}
             </p>
+            {budget.categories.length > 0 && (
+              <p className="text-xs text-on-surface-variant">Swipe a budget left (or tap it) to edit or delete.</p>
+            )}
             {categoriesAboveLimit && (
               <div className="mt-2">
                 <BalanceNotice tone="info">
@@ -189,41 +194,66 @@ export default function Budgets() {
                 const s = status(ratio);
                 const left = b.limit - catSpent;
                 return (
-                  <li key={b.category} className="card p-4">
-                    <div className="flex items-center gap-4">
-                      <IconTile icon={cat.icon} tone={s.warn ? "tertiary" : "neutral"} round />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-[17px] font-semibold">{cat.long}</p>
-                        <p className={`text-sm ${s.warn ? "font-medium text-tertiary" : "text-on-surface-variant"}`}>
-                          {left >= 0 ? `${money(left)} left` : `${money(left)} over`}
-                        </p>
+                  <li key={b.category} className="card overflow-hidden p-0">
+                    <SwipeActions
+                      id={`budget-${b.category}`}
+                      label={`${cat.long} budget, ${money(catSpent)} of ${money(b.limit)}`}
+                      className="bg-surface-container-lowest p-4"
+                      actions={[
+                        { label: "Edit", icon: Pencil, tone: "primary", onClick: () => setEditingCat(b.category) },
+                        { label: "Delete", icon: Trash2, tone: "danger", onClick: () => setRemoving(b.category) },
+                      ]}
+                    >
+                      <div className="flex items-start gap-3">
+                        <IconTile icon={cat.icon} tone={s.warn ? "tertiary" : "neutral"} round size="sm" />
+                        <div className="min-w-0 flex-1">
+                          {/* Row 1: name (truncates) · spent / limit (never wraps) */}
+                          <div className="flex items-baseline justify-between gap-2">
+                            <p className="min-w-0 truncate font-semibold">{cat.long}</p>
+                            <p className="shrink-0 whitespace-nowrap tabular-nums">
+                              <span className="font-semibold">{money(catSpent)}</span>
+                              <span className="text-xs text-on-surface-variant"> / {money(b.limit)}</span>
+                            </p>
+                          </div>
+                          {/* Row 2: left/over · status badge (wraps on very narrow screens) */}
+                          <div className="mt-1 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+                            <p
+                              className={`text-sm tabular-nums ${s.warn ? "font-medium text-tertiary" : "text-on-surface-variant"}`}
+                            >
+                              {left >= 0 ? `${money(left)} left` : `${money(left)} over`}
+                            </p>
+                            <span
+                              className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                                s.warn ? "bg-tertiary-fixed" : "bg-primary-fixed-dim/70"
+                              }`}
+                            >
+                              <span className={`size-1.5 rounded-full ${s.warn ? "bg-tertiary" : "bg-primary"}`} />
+                              {s.badge}
+                            </span>
+                          </div>
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <p>
-                          <span className="tabular-nums text-lg font-semibold">{money(catSpent)}</span>
-                          <span className="text-sm text-on-surface-variant"> / {money(b.limit)}</span>
-                        </p>
-                        <span
-                          className={`mt-1 inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                            s.warn ? "bg-tertiary-fixed" : "bg-primary-fixed-dim/70"
-                          }`}
-                        >
-                          <span className={`size-1.5 rounded-full ${s.warn ? "bg-tertiary" : "bg-primary"}`} />
-                          {s.badge}
-                        </span>
+                      <div className="mt-3">
+                        <ProgressBar value={ratio} tone={s.warn ? "tertiary" : "primary"} />
                       </div>
-                      <button
-                        aria-label={`Remove ${cat.long} budget`}
-                        disabled={busy}
-                        onClick={() => setRemoving(b.category)}
-                        className="rounded-full p-2 text-on-surface-variant hover:bg-surface-container"
-                      >
-                        <Trash2 className="size-4" />
-                      </button>
-                    </div>
-                    <div className="mt-4">
-                      <ProgressBar value={ratio} tone={s.warn ? "tertiary" : "primary"} />
-                    </div>
+                    </SwipeActions>
+                    {editingCat === b.category && (
+                      <div className="border-t border-surface-container px-4 pb-4">
+                        <AmountForm
+                          label={`${cat.long} limit`}
+                          initial={b.limit}
+                          allowZero={false}
+                          onCancel={() => setEditingCat(null)}
+                          onSave={async (v) => {
+                            await saveBudget({
+                              ...budget,
+                              categories: budget.categories.map((c) => (c.category === b.category ? { ...c, limit: v } : c)),
+                            });
+                            setEditingCat(null);
+                          }}
+                        />
+                      </div>
+                    )}
                   </li>
                 );
               })}

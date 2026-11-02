@@ -188,7 +188,8 @@ src/
 ├─ components/
 │  ├─ ui.tsx                     AppHeader (logo, bell [no-op], UserMenu), Logo, IconTile, MonthPill [no-op], ProgressBar, SectionTitle
 │  ├─ BottomNav.tsx              Fixed bottom nav (Overview, Analytics, [+], Budgets, Loans); TabPage wrapper
-│  ├─ TransactionRow.tsx         Swipeable row (drag left / tap → View · Edit · Delete), details pop-up, delete confirm; EmptyState
+│  ├─ SwipeActions.tsx           Generic swipe-left row (drag/tap/Enter reveals action buttons; one open app-wide)
+│  ├─ TransactionRow.tsx         Transaction row on SwipeActions (View · Edit · Delete), details pop-up, delete confirm; EmptyState
 │  ├─ AmountForm.tsx             Inline ₹ amount form (validates, shows its own errors); sanitizeAmount()
 │  ├─ ConfirmDialog.tsx          <dialog> Yes/Cancel modal (danger variant, busy state)
 │  ├─ DateTimePicker.tsx         Field + compact centered calendar/time pop-up; formatWhen(); future dates disabled
@@ -370,7 +371,7 @@ Reference scenario (from the spec): budget 3,000, spent 1,830.40 → Remaining 1
 ### Analytics page
 - Range tabs Week / Month / Year → current period vs previous period of the same length; % change shown if previous > 0.
 - "Under/Over budget by" only on Month with a budget.
-- Donut = expense share by category (colors from `categories[id].color`). Top merchants = top 3 by spend (case-insensitive merchant name).
+- Donut = expense share by category (colors from `categories[id].color`). Below it, **one row per category** (full name, amount, % share, thin bar in the category colour); no truncated two-column chips. Top merchants = top 3 by spend (case-insensitive merchant name).
 - Weekly trend = last 4 Monday-start weeks; dashed target = `monthlyLimit × 12 / 52` (if a budget is set).
 - CSV export: all transactions, newest first → `Date, Type, Merchant / note, Category, Payment method, Amount (INR)` (see "CSV exports" below).
 
@@ -395,9 +396,9 @@ Reference scenario (from the spec): budget 3,000, spent 1,830.40 → Remaining 1
   - New → saves immediately. **Edit → "Save changes?" confirm (Yes/Cancel). Delete → danger confirm.** On success → `/`.
   - Unknown/foreign id → "Transaction not found" screen.
 - **DateTimePicker:** field shows "Today, 2:45 PM" / "Yesterday, …" / "Fri, 24 Oct, …"; tapping opens a **compact centered pop-up** (max 20rem wide, 1rem margin on phones) with preview, Now/Yesterday/2 days ago, Monday-first calendar, hour/minute/AM-PM; future days and times disabled; Done/Cancel; Esc or backdrop tap closes.
-- **Transaction rows** (Overview recent list, Accounts history): **swipe left** (touch or mouse drag) or **tap / Enter** to reveal three actions: **View** (read-only details pop-up with an Edit button), **Edit** (`/add?id=…`), **Delete** (confirm dialog, "Yes, delete"). Only one row is open at a time (window event `ledgerly:row-open`); vertical scrolling stays native (`touch-action: pan-y`). Rows no longer navigate on tap.
+- **Transaction rows** (Overview recent list, Accounts history; built on `SwipeActions`): **swipe left** (touch or mouse drag) or **tap / Enter** to reveal three actions: **View** (read-only details pop-up with an Edit button), **Edit** (`/add?id=…`), **Delete** (confirm dialog, "Yes, delete"). Only one row is open at a time (window event `ledgerly:row-open`); vertical scrolling stays native (`touch-action: pan-y`). Rows no longer navigate on tap.
 - **Monthly Budget card:** app font with tabular digits; the spent/cap row and the "Daily safe pace" row wrap on narrow phones, with "N days left" in its own pill so they never collide.
-- **Budgets:** Set Limit (inline AmountForm), add category budget (chips + amount), remove → confirm dialog.
+- **Budgets:** Set Limit (inline AmountForm), add category budget (chips + amount). Category cards use **SwipeActions**: swipe left / tap → **Edit** (inline limit form under the card) and **Delete** (confirm dialog). Card layout is two rows (name ↔ spent / limit; left/over ↔ status badge) with truncation and wrapping so nothing overlaps on small phones.
 - **Loans tab** (`/loans`): summary cards, **I lent money** / **I borrowed** buttons → `/loans/new?dir=…`, Open/Settled tabs, **Download all loans (CSV)** at the end, cards with progress bar, Overdue badge, next payment and repay-by date. Tap → detail.
 - **Loan form** (`/loans/new`, `?id=` to edit): I lent / I borrowed tabs, big amount, optional **Total to repay** (interest/fees), name, source chips (Friend, Relative, Online app, Bank, Other), date (DateTimePicker), payment method (default UPI), optional **Repay by** (native date input), optional **Monthly repayment plan** (amount + day 1–28), note. Edit → confirm dialog.
 - **Loan detail** (`/loans/[id]`): outstanding (hero), progress, details (dates, plan, next payment, note); **Record repayment** with **Settle in full · ₹X** and **Monthly · ₹Y** quick-fill chips, date, method, note → confirm ("Record & settle loan" when it clears the balance); repayment history with remove (confirm); **Download <person>'s statement (CSV)** (covers every loan with that person; a hint shows how many others are included); Edit loan; Delete loan (danger confirm).
@@ -520,6 +521,7 @@ For isolated tests use a **temporary local MongoDB** (`mongod --dbpath <tmp> --p
 | 2026-10-31 | Balance is anchored in time: only transactions dated ≥ `balanceAsOf` change it; anchor truncated to the minute; legacy docs fall back to `updatedAt` | User request. Fixes double-counting when a user enters their current balance after already logging transactions |
 | 2026-11-02 | **Loans** feature (lend & borrow) as its own tab; replaces Accounts in the nav (Accounts via "View All"). Repay in full or monthly/partial; optional total-to-repay (interest), due date, monthly plan. No EMI amortisation or interest maths yet | User request. Money lent/borrowed must not distort budget or income |
 | 2026-11-02 | Loan CSVs (kept simple on request): all-loans summary at the end of the Loans tab + passbook-style per-person statement on loan detail; transactions CSV switched to readable dates via shared `lib/csv.ts` | User request |
+| 2026-11-02 | Swipe actions extracted into `SwipeActions`; used for transactions and category budgets. Analytics breakdown as full-width rows | User request (overlapping text on small phones; truncated names) |
 | 2026-11-02 | CSV dates DD/MM/YYYY; non-blocking low-balance warnings (expense, lending, repaying) + budget info notices | User request; warn instead of block because real life allows overdraft/credit |
 | 2026-11-02 | "Sending home" stays an **expense** | User decision: regular planned monthly outflow, budgetable |
 | 2026-10-31 | Upgraded Next 15.5.28 / React 19.1.10 / Mongoose 8.24.x | Security advisories; Vercel deploy block |

@@ -131,14 +131,29 @@ export default function Analytics() {
                   </p>
                 </div>
               </div>
-              <ul className="grid grid-cols-2 gap-2 text-sm">
-                {breakdown.map((c) => (
-                  <li key={c.category} className="flex items-center gap-2 rounded-lg bg-surface-container-low px-3 py-2">
-                    <span className="size-2.5 shrink-0 rounded-full" style={{ background: categories[c.category].color }} />
-                    <span className="min-w-0 flex-1 truncate">{categories[c.category].long}</span>
-                    <span className="tabular-nums font-medium">{money(c.amount)}</span>
-                  </li>
-                ))}
+              {/* One category per row: full name, amount, share and a thin bar in the category colour */}
+              <ul className="divide-y divide-surface-container rounded-xl bg-surface-container-low px-4">
+                {breakdown.map((c) => {
+                  const share = total > 0 ? c.amount / total : 0;
+                  const color = categories[c.category].color;
+                  return (
+                    <li key={c.category} className="py-3">
+                      <div className="flex items-center gap-3">
+                        <span className="size-3 shrink-0 rounded-full" style={{ background: color }} aria-hidden />
+                        <span className="min-w-0 flex-1 text-sm font-medium break-words">{categories[c.category].long}</span>
+                        <span className="shrink-0 text-right">
+                          <span className="block text-sm font-semibold tabular-nums">{money(c.amount)}</span>
+                          <span className="block text-xs tabular-nums text-on-surface-variant">
+                            {share < 0.01 && share > 0 ? "<1" : Math.round(share * 100)}%
+                          </span>
+                        </span>
+                      </div>
+                      <div className="mt-2 ml-6 h-1.5 overflow-hidden rounded-full bg-surface-container-high">
+                        <div className="h-full rounded-full" style={{ width: `${Math.max(2, share * 100)}%`, background: color }} />
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             </section>
 
