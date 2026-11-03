@@ -39,6 +39,7 @@ Check the connection at `GET /api/health`.
 | --- | --- | --- |
 | POST | `/api/auth/signup` · `/api/auth/login` · `/api/auth/logout` | Create account / sign in / sign out (httpOnly session cookie) |
 | GET | `/api/auth/me` | Signed-in user |
+| POST | `/api/auth/password` | Change password `{currentPassword, newPassword}` (session required) |
 | GET / POST | `/api/transactions` | List / create transactions |
 | PUT / DELETE | `/api/transactions/:id` | Update / delete a transaction |
 | GET / PUT | `/api/budget` | Monthly and category limits |
@@ -47,7 +48,7 @@ Check the connection at `GET /api/health`.
 | POST · DELETE | `/api/loans/:id/payments` · `…/payments/:paymentId` | Record / undo a repayment |
 | GET | `/api/health` | Database connectivity |
 
-Responses use `{ success, payload }` or `{ success: false, error }`. All routes except auth and health require a session and only touch the signed-in user's data.
+Responses use `{ success, payload }` or `{ success: false, error }`. Login, sign-up and change password are rate-limited (429 with `Retry-After`; counters in MongoDB). All routes except auth and health require a session and only touch the signed-in user's data.
 
 ## Project structure
 

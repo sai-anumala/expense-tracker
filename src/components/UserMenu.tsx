@@ -1,19 +1,22 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { LogOut } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { KeyRound, LogOut } from "lucide-react";
 import { useAppData } from "@/lib/store";
+import { ChangePasswordDialog } from "./ChangePasswordDialog";
 
 export function initials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   return ((parts[0]?.[0] ?? "") + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase() || "?";
 }
 
-/** Avatar with the signed-in user's initials; opens a menu with account info and Log out. */
+/** Avatar with the signed-in user's initials; opens a menu with account info, Change password and Log out. */
 export function UserMenu() {
   const { user, logout } = useAppData();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [pwOpen, setPwOpen] = useState(false);
+  const closePw = useCallback(() => setPwOpen(false), []);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -51,6 +54,16 @@ export function UserMenu() {
           </div>
           <button
             role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              setPwOpen(true);
+            }}
+            className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-surface-container-low"
+          >
+            <KeyRound className="size-4 text-on-surface-variant" aria-hidden /> Change password
+          </button>
+          <button
+            role="menuitem"
             disabled={busy}
             onClick={async () => {
               setBusy(true);
@@ -62,6 +75,7 @@ export function UserMenu() {
           </button>
         </div>
       )}
+      <ChangePasswordDialog open={pwOpen} onClose={closePw} />
     </div>
   );
 }

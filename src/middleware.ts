@@ -3,7 +3,7 @@ import { SESSION_COOKIE, verifySessionToken } from "@/lib/session";
 
 /** Pages that don't need a session. Signed-in users visiting them are sent to the app. */
 const AUTH_PAGES = ["/login", "/signup"];
-/** API routes reachable without a session. */
+/** API routes reachable without a session. (`/api/auth/password` is deliberately NOT here: it needs one.) */
 const PUBLIC_API = ["/api/auth/login", "/api/auth/signup", "/api/auth/logout", "/api/health"];
 
 export async function middleware(req: NextRequest) {

@@ -4,10 +4,13 @@ import { connectDb } from "@/lib/db";
 import { dbErrorResponse, fail, ok, readJsonObject, requireDb } from "@/lib/api";
 import { setSessionCookie } from "@/lib/auth";
 import { normalizeEmail, validateEmail, validateName, validatePassword } from "@/lib/authInput";
+import { HOUR, clientIp, hit, rateKey, tooMany } from "@/lib/rateLimit";
 import { isAuthConfigured } from "@/lib/session";
 import { UserModel } from "@/models/User";
 
 export const dynamic = "force-dynamic";
+
+const SIGNUP_LIMIT = 10;
 
 /** POST /api/auth/signup { name, email, password } — creates an account and signs in. */
 export async function POST(req: Request) {
@@ -25,6 +28,10 @@ export async function POST(req: Request) {
   if (emailError) return fail(400, emailError);
   const pwError = validatePassword(body.password);
   if (pwError) return fail(400, pwError);
+
+  // Max SIGNUP_LIMIT valid sign-up attempts per IP per hour (fails open if the counter errors).
+  const limit = await hit(rateKey("signup-ip", clientIp(req)), SIGNUP_LIMIT, HOUR);
+  if (!limit.allowed) return tooMany("sign-up attempts from this network", limit.retryAfterSec);
 
   try {
     await connectDb();

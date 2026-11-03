@@ -4,7 +4,7 @@
 > Read this first; it should answer most questions without exploring the code.
 > **Keep it current:** any change to behaviour, data model, API, env vars, or deployment must update the relevant section here **in the same commit** (see [§15](#15-maintaining-this-file)).
 
-Last updated: 2026-11-02 · Branch model: `develop` → `main` · Live: <https://expense-tracker-sage-six-21.vercel.app>
+Last updated: 2026-11-03 · Branch model: `develop` → `main` · Live: <https://expense-tracker-sage-six-21.vercel.app>
 
 ---
 
@@ -180,7 +180,8 @@ src/
 │  ├─ (app)/loans/[id]/page.tsx  Loan detail: progress, record repayment / Settle in full, history, edit, delete
 │  └─ api/
 │     ├─ health/route.ts         GET public status {db, auth}; never leaks error details
-│     ├─ auth/signup|login|logout|me/route.ts
+│     ├─ auth/signup|login|logout|me/route.ts  (login + signup are rate-limited)
+│     ├─ auth/password/route.ts  POST change password (session required, rate-limited)
 │     ├─ transactions/route.ts   GET list, POST create
 │     ├─ transactions/[id]/route.ts  PUT update, DELETE
 │     ├─ budget/route.ts         GET, PUT (replace whole budget)
@@ -197,7 +198,8 @@ src/
 │  ├─ AuthForm.tsx               Login/Signup form; safeNext() prevents open redirects
 │  ├─ Splash.tsx                 Launch splash (logo pop, ring pulse, name + tagline, progress line)
 │  ├─ BalanceNotice.tsx          Non-blocking warn/info notice + ShortfallText wording
-│  └─ UserMenu.tsx               Initials avatar → menu (name, email, Log out); initials()
+│  ├─ ChangePasswordDialog.tsx   Centered <dialog>: current / new / confirm password, show-hide, inline errors, success state
+│  └─ UserMenu.tsx               Initials avatar → menu (name, email, Change password, Log out); initials()
 ├─ lib/
 │  ├─ store.tsx      (client)    TransactionsProvider, useAppData, api() fetch helper, ApiError, errorMessage()
 │  ├─ data.ts                    Categories (+ primaryCategories / moreCategories), paymentMethods + DEFAULT_PAYMENT_METHOD, types, empty defaults
@@ -208,13 +210,14 @@ src/
 │  ├─ session.ts     (edge-safe) JWT create/verify, SESSION_COOKIE, isAuthConfigured
 │  ├─ auth.ts        (server)    getSession, requireUser, set/clearSessionCookie
 │  ├─ authInput.ts   (server)    validateEmail/Password/Name, normalizeEmail
+│  ├─ rateLimit.ts   (server)    MongoDB fixed-window limiter: hit/check/clear, rateKey (SHA-256), clientIp, tooMany (429 + Retry-After); fails open
 │  ├─ transactionInput.ts (server) parseTransactionInput (all tx validation), toTransactionDto
 │  ├─ balance.ts                 availableBalance (excl. edited record), shortfall (low-balance check)
 │  ├─ csv.ts         (client)    csvDateTime/csvDate/csvAmount, toCsv (escaping + injection guard), slug, downloadCsv (BOM)
 │  ├─ loanExport.ts              loansSummaryRows, personStatementRows (pure; used by Loans CSV buttons)
 │  ├─ loans.ts                   (shared) Loan types, loanStatus, nextPaymentDate, loanCashEvents, loanTotals, source labels
 │  └─ loanInput.ts   (server)    parseLoanInput, parsePaymentInput, toLoanDto
-└─ models/  User.ts · Transaction.ts · Budget.ts · Settings.ts · Loan.ts
+└─ models/  User.ts · Transaction.ts · Budget.ts · Settings.ts · Loan.ts · RateLimit.ts
 design/      Stitch screenshots (dashboard/add/budget/analytics.png) + DESIGN.md (design system spec)
 README.md    Short human-facing overview (keep consistent with this file)
 CLAUDE.md    Imports this file for Claude Code
@@ -273,6 +276,16 @@ All schemas use `timestamps: true` and `strict: "throw"` (unknown fields throw �
 | `account`, `note` | String? | payment method ≤ 80, note ≤ 200 |
 | `payments[]` | `{_id, amount > 0, date, account?, note?}` | sum ≤ `totalDue`; each dated ≥ `date`, not future. Loan is **settled** when Σ payments ≥ `totalDue` (derived, not stored) |
 
+**`ratelimits`** (`RateLimit`): fixed-window counters for the auth endpoints (see §10)
+| Field | Type | Rules |
+|---|---|---|
+| `key` | String | **unique**; SHA-256 hex of `<kind>:<value>` (`ip:<ip>`, `login:<email>`, `signup-ip:<ip>`, `pwchange:<userId>`). Never a raw email or IP |
+| `count` | Number | attempts counted in the current window |
+| `windowStart` | Date | start of the window |
+| `expiresAt` | Date | end of the window; **TTL index** (`expireAfterSeconds: 0`) so MongoDB deletes stale docs (TTL monitor runs about once a minute) |
+
+No `timestamps`. Ownerless by design (keyed by hashes, never read by user-facing APIs).
+
 Why `key` instead of `userId` on budgets/settings: the collections already had a unique index on `key` from the single-user era; reusing it as the owner id avoided a migration.
 
 **Legacy data:** one `settings` doc with `key: "default"` (₹10,000) predates accounts. It is ownerless, invisible to every user, and safe to delete.
@@ -288,10 +301,11 @@ All bodies are JSON objects; non-object or invalid JSON → **400**. Mongoose `V
 | Method & path | Auth | Body | Success | Notable errors |
 |---|---|---|---|---|
 | `GET /api/health` | public | – | `{success, db: "connected", auth: "configured"}` | 503 `db: not-configured \| error`, `auth: missing-secret` |
-| `POST /api/auth/signup` | public | `{name, email, password}` | 201 `{id,name,email}` + cookie | 400 validation, 409 email exists |
-| `POST /api/auth/login` | public | `{email, password}` | 200 `{id,name,email}` + cookie | 401 "Incorrect email or password." (same for unknown email) |
+| `POST /api/auth/signup` | public | `{name, email, password}` | 201 `{id,name,email}` + cookie | 400 validation, 409 email exists, **429** "Too many sign-up attempts from this network. Try again in N minutes." + `Retry-After` |
+| `POST /api/auth/login` | public | `{email, password}` | 200 `{id,name,email}` + cookie | 401 "Incorrect email or password." (same for unknown email), **429** "Too many login attempts. Try again in N minutes." + `Retry-After` (seconds) |
 | `POST /api/auth/logout` | public | – | 200, cookie cleared | – |
 | `GET /api/auth/me` | session | – | `{id,name,email}` (re-read from DB) | 401 (and cookie cleared if user deleted) |
+| `POST /api/auth/password` | session | `{currentPassword, newPassword}` | 200 `{changed: true}` | 400 "Current password is incorrect." / "New password must be at least 8 characters." / "New password must be different."; 401; **429** "Too many wrong password attempts…" + `Retry-After` |
 | `GET /api/transactions` | session | – | `Transaction[]` newest first (max 1000) | – |
 | `POST /api/transactions` | session | `{merchant, category, amount, date(ISO), account?, receiptName?}` | 201 `Transaction` | 400 with specific reason |
 | `PUT /api/transactions/:id` | session | same as POST | 200 `Transaction` | 404 if not found **or not owned** (same message) |
@@ -326,6 +340,18 @@ Validation lives in `lib/transactionInput.ts` (transactions), `lib/authInput.ts`
 - **Login hardening:** identical error for wrong password vs unknown email; bcrypt-compares against a dummy hash when the email doesn't exist (timing).
 - **Client:** `api()` in `store.tsx` redirects to `/login?next=…` on any 401 (except auth endpoints). Logout is a full page reload to `/login` (clears in-memory data). `AuthForm.safeNext()` only allows same-site relative `next` paths.
 - CSRF: relies on `sameSite=lax` + JSON bodies (no CSRF tokens).
+- **Rate limiting** (`lib/rateLimit.ts`, collection `ratelimits`, fixed windows stored in MongoDB because Vercel functions share no memory):
+  | Endpoint | Key | Limit | What counts |
+  |---|---|---|---|
+  | `POST /api/auth/login` | `ip:<ip>` | 20 / 15 min | every attempt (after basic input checks) |
+  | `POST /api/auth/login` | `login:<email>` | 5 / 15 min | **failures only**; the 6th attempt is refused even with the right password; cleared on successful login |
+  | `POST /api/auth/signup` | `signup-ip:<ip>` | 10 / hour | every attempt that passes validation |
+  | `POST /api/auth/password` | `pwchange:<userId>` | 5 / 15 min | wrong current password only; cleared on success |
+  - Blocked → **429** `"Too many … Try again in N minutes."` with `Retry-After` (seconds). `AuthForm` and the change-password dialog show the server message inline.
+  - Keys are **SHA-256 hashes** (`node:crypto`) of `<kind>:<value>`: no raw emails or IPs are stored. Client IP = first `x-forwarded-for` entry (Vercel sets it), else `x-real-ip`, else `"unknown"`.
+  - **Fails open:** if the rate-limit step itself errors it logs `rateLimit.* failed` and allows the request; DB errors in the main operation keep the normal `dbErrorResponse` handling.
+  - Atomic: one `findOneAndUpdate` upsert with an aggregation pipeline ("reset if expired, else +1"); a duplicate-key race on first insert is retried once.
+- **Change password:** `POST /api/auth/password` (session required; not in `PUBLIC_API`). Verifies the current password with bcrypt, validates the new one with `validatePassword` (8–72), rejects new = current, saves a new bcrypt hash (cost 12). The current session stays valid; **other devices stay signed in** until their cookie expires (stateless JWTs, see §19).
 
 ---
 
@@ -405,7 +431,8 @@ Reference scenario (from the spec): budget 3,000, spent 1,830.40 → Remaining 1
 - **Loans tab** (`/loans`): summary cards, **I lent money** / **I borrowed** buttons → `/loans/new?dir=…`, Open/Settled tabs, **Download all loans (CSV)** at the end, cards with progress bar, Overdue badge, next payment and repay-by date. Tap → detail.
 - **Loan form** (`/loans/new`, `?id=` to edit): I lent / I borrowed tabs, big amount, optional **Total to repay** (interest/fees), name, source chips (Friend, Relative, Online app, Bank, Other), date (DateTimePicker), payment method (default UPI), optional **Repay by** (native date input), optional **Monthly repayment plan** (amount + day 1–28), note. Edit → confirm dialog.
 - **Loan detail** (`/loans/[id]`): outstanding (hero), progress, details (dates, plan, next payment, note); **Record repayment** with **Settle in full · ₹X** and **Monthly · ₹Y** quick-fill chips, date, method, note → confirm ("Record & settle loan" when it clears the balance); repayment history with remove (confirm); **Download <person>'s statement (CSV)** (covers every loan with that person; a hint shows how many others are included); Edit loan; Delete loan (danger confirm).
-- **Header:** logo + subtitle, bell (no-op), UserMenu (initials → name/email/Log out).
+- **Header:** logo + subtitle, bell (no-op), UserMenu (initials → name/email, **Change password**, Log out).
+- **Change password dialog** (`components/ChangePasswordDialog.tsx`, from the account menu): compact centered `<dialog>` (rounded-2xl, `w-[min(22rem,calc(100%-2rem))]`) with Current password, New password (show/hide toggle for all fields, "At least 8 characters" hint), Confirm new password. Client checks (required, length, match, different) then server errors inline (`role="alert"`); busy "Saving…"; success shows "Password changed" (motion-safe pop) and closes after ~1.8 s or on Done. Esc / backdrop / Cancel close it (not while busy). No extra confirm dialog: entering the current password is the confirmation.
 - **Bottom nav:** Overview, Analytics, [+ FAB → /add], Budgets, **Loans**. Accounts is reached via "View All" on Recent Transactions. Quick actions: Add Expense, Add Income, Lend / Borrow, **Transfer** (with a "Soon" badge → `/transfer`).
 - **Transfer** (`/transfer`): "Coming soon" placeholder for moving money between your own accounts (bank ↔ wallet/UPI, ATM withdrawals, card bill payments; never counted as spending). Animated: coins travelling bank → wallet, floating icons, shimmering badge, staggered fade-up list. All animations use `motion-safe:` (keyframes `ledgerly-travel/float/shimmer/fade-up/dash/pop/ring/progress/fade-in` in `globals.css`), so "reduce motion" users get a static page. Not in the bottom nav (a 6th item would crowd small phones).
 - **Launch splash** (`components/Splash.tsx`): while the signed-in app loads, the logo tile pops in (spring), one soft ring pulse, "Ledgerly" + tagline "Track every rupee, calmly." slide up, a thin progress line glides; shown for **at least 800 ms** (`introDone` in the provider) so it finishes, longer only if data is still loading; then the app fades in (0.4 s). Plays on app open only (the `(app)` layout persists across tabs). Login/Sign-up get the same entrance (logo pop, staggered fade-up). All `motion-safe:`.
@@ -502,6 +529,7 @@ For isolated tests use a **temporary local MongoDB** (`mongod --dbpath <tmp> --p
 | `ENOSPC` during npm install | Disk full; `npm cache clean --force` (freed 12 GB once) |
 | Budget/settings duplicate-key error | `key` must be the owner's userId; never upsert with a shared constant |
 | A user sees no data after signup | Expected: new accounts start empty; legacy ownerless data is hidden |
+| "Too many login attempts" while testing locally | Per-email/IP counters live in the `ratelimits` collection of the **shared** DB. Wait for `Retry-After`, or (local/temporary DB only) delete the doc; keys are hashes, so `db.ratelimits.deleteMany({})` on a scratch DB. Without a proxy, local requests all share IP `unknown` unless `x-forwarded-for` is sent |
 | A transaction doesn't change the Total Available Balance | Its date is earlier than when the balance was entered (`balanceAsOf`); by design. Re-enter the balance via ✎ if needed |
 
 ---
@@ -533,13 +561,16 @@ For isolated tests use a **temporary local MongoDB** (`mongod --dbpath <tmp> --p
 | 2026-11-02 | Swipe actions extracted into `SwipeActions`; used for transactions and category budgets. Analytics breakdown as full-width rows | User request (overlapping text on small phones; truncated names) |
 | 2026-11-02 | CSV dates DD/MM/YYYY; non-blocking low-balance warnings (expense, lending, repaying) + budget info notices | User request; warn instead of block because real life allows overdraft/credit |
 | 2026-11-02 | "Sending home" stays an **expense** | User decision: regular planned monthly outflow, budgetable |
+| 2026-11-03 | Auth rate limiting stored in MongoDB (`ratelimits`, TTL index, hashed keys, fail open) + Change password (`POST /api/auth/password`, account-menu dialog) | User request. Vercel serverless has no shared memory; no new dependency or provider (Redis) needed. Fail open so a counter problem never locks users out |
 | 2026-10-31 | Upgraded Next 15.5.28 / React 19.1.10 / Mongoose 8.24.x | Security advisories; Vercel deploy block |
 
 ---
 
 ## 19. Known limitations / backlog
 
-- No password reset, email verification, or login rate limiting.
+- No password reset by email (needs an email provider) and no email verification.
+- Sessions are stateless JWTs: changing the password does **not** sign out other devices (they stay signed in until their 30-day cookie expires). Fix would need a per-user `tokenVersion`/`passwordChangedAt` checked on each request.
+- Rate limits are fixed windows per IP/email; many users behind one NAT share the per-IP budget (20 logins / 15 min, 10 sign-ups / hour).
 - No automated tests (consider Vitest for `lib/insights.ts` and Playwright for flows).
 - Notification bell and month picker are non-functional placeholders.
 - Receipts: only the file name is stored; no upload or storage.

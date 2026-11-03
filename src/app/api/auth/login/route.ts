@@ -4,6 +4,7 @@ import { connectDb } from "@/lib/db";
 import { dbErrorResponse, fail, ok, readJsonObject, requireDb } from "@/lib/api";
 import { setSessionCookie } from "@/lib/auth";
 import { normalizeEmail } from "@/lib/authInput";
+import { MINUTE, check, clear, clientIp, hit, rateKey, tooMany } from "@/lib/rateLimit";
 import { isAuthConfigured } from "@/lib/session";
 import { UserModel } from "@/models/User";
 
@@ -13,6 +14,12 @@ export const dynamic = "force-dynamic";
 let dummyHash: Promise<string> | null = null;
 const getDummyHash = () => (dummyHash ??= bcrypt.hash("not-a-real-password", 12));
 const BAD_LOGIN = "Incorrect email or password.";
+
+const WINDOW_MS = 15 * MINUTE;
+/** Failed attempts per email per window (the next attempt is refused, even with the right password). */
+const EMAIL_FAIL_LIMIT = 5;
+/** All attempts per client IP per window. */
+const IP_LIMIT = 20;
 
 /** POST /api/auth/login { email, password } */
 export async function POST(req: Request) {
@@ -26,11 +33,22 @@ export async function POST(req: Request) {
   const password = typeof body.password === "string" ? body.password : "";
   if (!email || !password) return fail(400, "Enter your email and password.");
 
+  // Rate limits (fail open): every attempt counts per IP; only failures count per email.
+  const ipLimit = await hit(rateKey("ip", clientIp(req)), IP_LIMIT, WINDOW_MS);
+  if (!ipLimit.allowed) return tooMany("login attempts", ipLimit.retryAfterSec);
+  const emailKey = rateKey("login", email);
+  const emailLimit = await check(emailKey, EMAIL_FAIL_LIMIT);
+  if (!emailLimit.allowed) return tooMany("login attempts", emailLimit.retryAfterSec);
+
   try {
     await connectDb();
     const user = await UserModel.findOne({ email }).select("+passwordHash");
     const valid = await bcrypt.compare(password.slice(0, 72), user?.passwordHash ?? (await getDummyHash()));
-    if (!user || !valid) return fail(401, BAD_LOGIN);
+    if (!user || !valid) {
+      await hit(emailKey, EMAIL_FAIL_LIMIT, WINDOW_MS);
+      return fail(401, BAD_LOGIN);
+    }
+    await clear(emailKey);
 
     const session = { userId: user._id.toString(), email: user.email, name: user.name };
     return setSessionCookie(ok({ id: session.userId, name: user.name, email: user.email }), session);
