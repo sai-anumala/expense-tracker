@@ -1,4 +1,5 @@
-import { Schema, Types, model, models, type InferSchemaType, type Model } from "mongoose";
+import { Schema, Types, type InferSchemaType, type Model } from "mongoose";
+import { defineModel } from "./defineModel";
 
 export const CATEGORY_IDS = [
   "food",
@@ -38,4 +39,4 @@ const TransactionSchema = new Schema(
 export type TransactionDoc = InferSchemaType<typeof TransactionSchema>;
 
 export const TransactionModel: Model<TransactionDoc> =
-  (models.Transaction as Model<TransactionDoc>) || model<TransactionDoc>("Transaction", TransactionSchema);
+  defineModel<TransactionDoc>("Transaction", TransactionSchema);

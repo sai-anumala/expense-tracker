@@ -1,4 +1,5 @@
-import { Schema, Types, model, models, type InferSchemaType, type Model } from "mongoose";
+import { Schema, Types, type InferSchemaType, type Model } from "mongoose";
+import { defineModel } from "./defineModel";
 import { LOAN_DIRECTIONS, LOAN_SOURCES } from "@/lib/loans";
 
 const PaymentSchema = new Schema(
@@ -36,4 +37,4 @@ const LoanSchema = new Schema(
 
 export type LoanDoc = InferSchemaType<typeof LoanSchema>;
 
-export const LoanModel: Model<LoanDoc> = (models.Loan as Model<LoanDoc>) || model<LoanDoc>("Loan", LoanSchema);
+export const LoanModel: Model<LoanDoc> = defineModel<LoanDoc>("Loan", LoanSchema);

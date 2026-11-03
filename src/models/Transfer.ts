@@ -1,4 +1,5 @@
-import { Schema, Types, model, models, type InferSchemaType, type Model } from "mongoose";
+import { Schema, Types, type InferSchemaType, type Model } from "mongoose";
+import { defineModel } from "./defineModel";
 import { TRANSFER_ACCOUNTS } from "@/lib/transfers";
 
 /** Money moved between the user's own accounts. Never income/spending; never changes the balance. */
@@ -19,4 +20,4 @@ const TransferSchema = new Schema(
 export type TransferDoc = InferSchemaType<typeof TransferSchema>;
 
 export const TransferModel: Model<TransferDoc> =
-  (models.Transfer as Model<TransferDoc>) || model<TransferDoc>("Transfer", TransferSchema);
+  defineModel<TransferDoc>("Transfer", TransferSchema);

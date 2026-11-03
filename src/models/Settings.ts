@@ -1,4 +1,5 @@
-import { Schema, model, models, type InferSchemaType, type Model } from "mongoose";
+import { Schema, type InferSchemaType, type Model } from "mongoose";
+import { defineModel } from "./defineModel";
 
 /** The user's single credit card: statement/due day of month (1–28) and optional limit. */
 const CardSchema = new Schema(
@@ -32,4 +33,4 @@ const SettingsSchema = new Schema(
 export type SettingsDoc = InferSchemaType<typeof SettingsSchema>;
 
 export const SettingsModel: Model<SettingsDoc> =
-  (models.Settings as Model<SettingsDoc>) || model<SettingsDoc>("Settings", SettingsSchema);
+  defineModel<SettingsDoc>("Settings", SettingsSchema);

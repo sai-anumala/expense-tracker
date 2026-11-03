@@ -232,7 +232,7 @@ src/
 │  ├─ loanInput.ts   (server)    parseLoanInput, parsePaymentInput, toLoanDto
 │  ├─ transfers.ts               (shared, pure) TRANSFER_ACCOUNTS + labels, Transfer type, transferRoute, isCardBill/isCardAdvance, CARD_BILL_HINT/CARD_ADVANCE_HINT/OWN_TRANSFER_HINT + transferHint, transferPrefill, mergeFeed (tx + transfers by date), transferTotals
 │  └─ transferInput.ts (server)  parseTransferInput, toTransferDto
-└─ models/  User.ts · Transaction.ts · Budget.ts · Settings.ts · Loan.ts · Transfer.ts · RateLimit.ts
+└─ models/  defineModel.ts (dev-safe registration) · User.ts · Transaction.ts · Budget.ts · Settings.ts · Loan.ts · Transfer.ts · RateLimit.ts
 src/lib/__tests__/  Vitest unit tests (<module>.test.ts) + fixtures.ts builders (see §16)
 test/        Vitest setup.ts (TZ, no DB) and server-only-stub.ts · vitest.config.mts at the repo root
 design/      Stitch screenshots (dashboard/add/budget/analytics.png) + DESIGN.md (design system spec)
@@ -617,6 +617,7 @@ For isolated tests use a **temporary local MongoDB** (`mongod --dbpath <tmp> --p
 | `ENOSPC` during npm install | Disk full; `npm cache clean --force` (freed 12 GB once) |
 | Budget/settings duplicate-key error | `key` must be the owner's userId; never upsert with a shared constant |
 | A user sees no data after signup | Expected: new accounts start empty; legacy ownerless data is hidden |
+| "Request contains unknown fields." (400) right after a model gained a field, in `npm run dev` | Old Mongoose model cached in the running dev process. Fixed by `src/models/defineModel.ts` (re-registers models on reload in development); servers started before that fix need one restart. Production is unaffected (fresh process per deploy). Don't pass `<T>` into `mongoose.model()` there: the generic inference made `tsc` run out of memory |
 | Thousands of lint/tsc errors from `.claude/worktrees/...` | Sub-agent worktrees live inside the repo. They are excluded in `eslint.config.mjs` (`.claude/**`), `tsconfig.json` (`exclude`) and `.gitignore` (`.claude/worktrees/`); keep those exclusions |
 | "Too many login attempts" while testing locally | Per-email/IP counters live in the `ratelimits` collection of the **shared** DB. Wait for `Retry-After`, or (local/temporary DB only) delete the doc; keys are hashes, so `db.ratelimits.deleteMany({})` on a scratch DB. Without a proxy, local requests all share IP `unknown` unless `x-forwarded-for` is sent |
 | A transaction doesn't change the Total Available Balance | Its date is earlier than when the balance was entered (`balanceAsOf`); by design. Re-enter the balance via ✎ if needed. Card purchases (paid with "Credit Card") never change it; paying the bill does |

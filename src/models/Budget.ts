@@ -1,4 +1,5 @@
-import { Schema, model, models, type InferSchemaType, type Model } from "mongoose";
+import { Schema, type InferSchemaType, type Model } from "mongoose";
+import { defineModel } from "./defineModel";
 import { CATEGORY_IDS } from "./Transaction";
 
 const BudgetSchema = new Schema(
@@ -25,4 +26,4 @@ const BudgetSchema = new Schema(
 export type BudgetDoc = InferSchemaType<typeof BudgetSchema>;
 
 export const BudgetModel: Model<BudgetDoc> =
-  (models.Budget as Model<BudgetDoc>) || model<BudgetDoc>("Budget", BudgetSchema);
+  defineModel<BudgetDoc>("Budget", BudgetSchema);

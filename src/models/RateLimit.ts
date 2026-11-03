@@ -1,4 +1,5 @@
-import { Schema, model, models, type InferSchemaType, type Model } from "mongoose";
+import { Schema, type InferSchemaType, type Model } from "mongoose";
+import { defineModel } from "./defineModel";
 
 /**
  * Fixed-window counters for rate limiting (auth endpoints). Stored in MongoDB because Vercel
@@ -20,4 +21,4 @@ RateLimitSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 export type RateLimitDoc = InferSchemaType<typeof RateLimitSchema>;
 
 export const RateLimitModel: Model<RateLimitDoc> =
-  (models.RateLimit as Model<RateLimitDoc>) || model<RateLimitDoc>("RateLimit", RateLimitSchema);
+  defineModel<RateLimitDoc>("RateLimit", RateLimitSchema);
