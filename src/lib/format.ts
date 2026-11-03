@@ -31,6 +31,11 @@ export function monthLabel(d = new Date()) {
   return d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
 }
 
+/** "5 Nov" (day + short month). */
+export function dayMonth(d: Date) {
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+}
+
 export function daysLeftInMonth(d = new Date()) {
   const end = new Date(d.getFullYear(), d.getMonth() + 1, 0);
   return end.getDate() - d.getDate() + 1; // includes today

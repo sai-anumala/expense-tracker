@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowLeftRight, ChevronLeft, Eye, Pencil, Trash2, X } from "lucide-react";
 import { money, timeOf } from "@/lib/format";
 import { errorMessage, useAppData } from "@/lib/store";
-import { CARD_BILL_HINT, isCardBill, transferAccountLabels, transferRoute, type Transfer } from "@/lib/transfers";
+import { isCardAdvance, isCardBill, transferAccountLabels, transferHint, transferRoute, type Transfer } from "@/lib/transfers";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { SwipeActions } from "./SwipeActions";
 import { formatWhen } from "./DateTimePicker";
@@ -21,7 +21,8 @@ export function TransferIcon({ size = "md" }: { size?: "sm" | "md" }) {
   );
 }
 
-const titleOf = (t: Transfer) => t.note || (isCardBill(t) ? "Card bill payment" : "Transfer");
+const typeOf = (t: Transfer) => (isCardBill(t) ? "Card bill payment" : isCardAdvance(t) ? "Card cash withdrawal" : "Transfer");
+const titleOf = (t: Transfer) => t.note || typeOf(t);
 
 /** Transfer row with swipe-left actions (View / Edit / Delete); mirrors TransactionRow. */
 export function TransferRow({ t }: { t: Transfer }) {
@@ -112,7 +113,7 @@ function TransferDetails({ t, onClose, onEdit }: { t: Transfer; onClose: () => v
   }, []);
 
   const rows: [string, string][] = [
-    ["Type", isCardBill(t) ? "Card bill payment" : "Transfer"],
+    ["Type", typeOf(t)],
     ["From", transferAccountLabels[t.from]],
     ["To", transferAccountLabels[t.to]],
     ["Date & time", formatWhen(new Date(t.date))],
@@ -154,7 +155,7 @@ function TransferDetails({ t, onClose, onEdit }: { t: Transfer; onClose: () => v
           ))}
         </dl>
         <p className="mt-3 text-xs text-on-surface-variant">
-          {isCardBill(t) ? CARD_BILL_HINT : "Moves money between your own accounts. Not income or spending."}
+          {transferHint(t)}
         </p>
 
         <div className="mt-5 grid grid-cols-2 gap-2">

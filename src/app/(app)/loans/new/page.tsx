@@ -35,7 +35,7 @@ export default function NewLoanPage() {
 function LoanForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const { loans, addLoan, updateLoan, transactions, settings } = useAppData();
+  const { loans, addLoan, updateLoan, transactions, transfers, settings } = useAppData();
 
   const editId = params.get("id");
   const existing = editId ? loans.find((l) => l.id === editId) : undefined;
@@ -65,7 +65,7 @@ function LoanForm() {
   const accountOptions = paymentMethods.includes(account) ? paymentMethods : [account, ...paymentMethods];
   // Lending takes money out of your balance: warn (non-blocking) if it's more than you have.
   // When editing, ignore this loan's own effect so it isn't counted twice.
-  const available = availableBalance(transactions, loans, settings, { loanId: existing?.id });
+  const available = availableBalance(transactions, transfers, loans, settings, { loanId: existing?.id });
   const short = lent ? shortfall(available, value, when, settings.balanceAsOf) : null;
 
   function validate(): string | null {

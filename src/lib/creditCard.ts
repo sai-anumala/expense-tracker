@@ -43,11 +43,57 @@ export function availableCashEvents(
   const out: (CashEvent & { kind: "transaction" | "transfer" | "loan" })[] = [];
   for (const t of transactions) if (!isCardTransaction(t)) out.push({ amount: t.amount, date: t.date, kind: "transaction" });
   for (const tr of transfers) {
-    if (tr.to === "card" && tr.from !== "card") out.push({ amount: -tr.amount, date: tr.date, kind: "transfer" });
-    else if (tr.from === "card" && tr.to !== "card") out.push({ amount: tr.amount, date: tr.date, kind: "transfer" });
+    const amount = transferCashEffect(tr);
+    if (amount !== 0) out.push({ amount, date: tr.date, kind: "transfer" });
   }
   for (const e of loanCashEvents(loans)) out.push({ ...e, kind: "loan" });
   return out;
+}
+
+/**
+ * Signed effect of one transfer on Total Available Balance: bill payment (X → card) −amount,
+ * cash withdrawal (card → X) +amount, anything else 0.
+ */
+export function transferCashEffect(t: Pick<Transfer, "from" | "to" | "amount">): number {
+  if (t.to === "card" && t.from !== "card") return -t.amount;
+  if (t.from === "card" && t.to !== "card") return t.amount;
+  return 0;
+}
+
+/** Cash that leaves the available balance for an expense of `amount` (> 0): 0 when paid with the credit card. */
+export const expenseCashOutflow = (amount: number, account: string | undefined) =>
+  account === CARD_ACCOUNT ? 0 : amount;
+
+/**
+ * What is owed on the card right now (no statement setup needed): `cardDueAtAnchor` at `balanceAsOf`
+ * plus card events dated ≥ the anchor (all events from 0 without an anchor). Negative = card credit.
+ */
+export function currentCardDue(
+  transactions: Transaction[],
+  transfers: Transfer[],
+  settings: Pick<Settings, "balanceAsOf"> & { cardDueAtAnchor?: number | null },
+): number {
+  const anchor = settings.balanceAsOf ? new Date(settings.balanceAsOf) : null;
+  const start = anchor ? (settings.cardDueAtAnchor ?? 0) : 0;
+  const sum = cardDueEvents(transactions, transfers)
+    .filter((e) => !anchor || new Date(e.date) >= anchor)
+    .reduce((s, e) => s + e.amount, 0);
+  return round(start + sum);
+}
+
+/**
+ * One-time Overview prompt after the card model shipped: the balance was entered before the unpaid card amount
+ * existed (`cardDueAtAnchor` null) and card activity since then now changes the numbers. True when a balance is set,
+ * `cardDueAtAnchor` is null, and a card transaction or a transfer to/from the card is dated ≥ `balanceAsOf`.
+ */
+export function needsCardDuePrompt(
+  transactions: Transaction[],
+  transfers: Transfer[],
+  settings: Pick<Settings, "openingBalance" | "balanceAsOf" | "cardDueAtAnchor">,
+): boolean {
+  if (settings.openingBalance === null || !settings.balanceAsOf || settings.cardDueAtAnchor !== null) return false;
+  const anchor = new Date(settings.balanceAsOf);
+  return cardDueEvents(transactions, transfers).some((e) => new Date(e.date) >= anchor);
 }
 
 /**
@@ -169,5 +215,39 @@ export function cardSummary(
     utilization: card.limit ? Math.max(0, due) / card.limit : null,
     unbilledEvents,
     billedEvents,
+  };
+}
+
+export type CardDuesLine =
+  | {
+      kind: "after";
+      /** Available balance minus everything owed on the card (may be negative). */
+      after: number;
+      /** True when card dues are more than the cash available (show amber). */
+      short: boolean;
+      /** Unpaid part of the last statement (0 = omit) and its due date. */
+      bill: number;
+      dueDate: Date;
+      /** Spent since the last statement (0 = omit). */
+      unbilled: number;
+    }
+  | { kind: "credit"; credit: number };
+
+/**
+ * Overview "After card dues" line. null when there is no balance or no card set up, or nothing is owed.
+ * due > 0 → { kind: "after", after = available − due, … }; due < 0 (overpaid) → { kind: "credit" }.
+ */
+export function cardDuesLine(available: number | null, summary: CardSummary | null): CardDuesLine | null {
+  if (available === null || !summary) return null;
+  if (summary.due < 0) return { kind: "credit", credit: summary.credit };
+  if (summary.due === 0) return null;
+  const after = round(available - summary.due);
+  return {
+    kind: "after",
+    after,
+    short: after < 0,
+    bill: summary.billOutstanding,
+    dueDate: summary.dueDate,
+    unbilled: summary.unbilled,
   };
 }

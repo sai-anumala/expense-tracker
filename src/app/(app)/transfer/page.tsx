@@ -26,11 +26,16 @@ import { TransferRow } from "@/components/TransferRow";
 import { errorMessage, useAppData } from "@/lib/store";
 import { periodBounds } from "@/lib/insights";
 import { CURRENCY_SYMBOL, money, plural } from "@/lib/format";
+import { BalanceNotice, ShortfallText } from "@/components/BalanceNotice";
+import { availableBalance, shortfall } from "@/lib/balance";
+import { transferCashEffect } from "@/lib/creditCard";
 import {
-  CARD_BILL_HINT,
   TRANSFER_ACCOUNTS,
+  isCardAdvance,
   isCardBill,
   transferAccountLabels,
+  transferHint,
+  transferPrefill,
   transferRoute,
   transferTotals,
   type TransferAccount,
@@ -56,19 +61,28 @@ export default function TransferPage() {
 function TransferScreen() {
   const params = useSearchParams();
   const editId = params.get("id");
+  // Defaults for a NEW transfer can come from the URL (e.g. "Pay bill" on the Credit Card screen).
+  const prefill = transferPrefill((k) => params.get(k));
+  const prefillKey = `${prefill.from}-${prefill.to}-${prefill.amount}`;
   // Remount the form when switching between "new" and a specific transfer so its fields reset.
-  return <TransferForm key={editId ?? "new"} editId={editId} />;
+  return <TransferForm key={editId ?? `new-${prefillKey}`} editId={editId} prefill={prefill} />;
 }
 
-function TransferForm({ editId }: { editId: string | null }) {
+function TransferForm({
+  editId,
+  prefill,
+}: {
+  editId: string | null;
+  prefill: { from: TransferAccount; to: TransferAccount; amount: string };
+}) {
   const router = useRouter();
-  const { transfers, addTransfer, updateTransfer } = useAppData();
+  const { transfers, addTransfer, updateTransfer, transactions, loans, settings } = useAppData();
   const existing = editId ? transfers.find((t) => t.id === editId) : undefined;
   const isEdit = Boolean(existing);
 
-  const [from, setFrom] = useState<TransferAccount>(existing?.from ?? "bank");
-  const [to, setTo] = useState<TransferAccount>(existing?.to ?? "cash");
-  const [amount, setAmount] = useState(existing ? existing.amount.toFixed(2) : "");
+  const [from, setFrom] = useState<TransferAccount>(existing?.from ?? prefill.from);
+  const [to, setTo] = useState<TransferAccount>(existing?.to ?? prefill.to);
+  const [amount, setAmount] = useState(existing ? existing.amount.toFixed(2) : prefill.amount);
   const [when, setWhen] = useState(() => (existing ? new Date(existing.date) : new Date()));
   const [note, setNote] = useState(existing?.note ?? "");
   const [saving, setSaving] = useState(false);
@@ -80,6 +94,11 @@ function TransferForm({ editId }: { editId: string | null }) {
   const tooLarge = value > MAX_AMOUNT;
   const canSave = value > 0 && !tooLarge && from !== to && !saving;
   const month = transferTotals(transfers, periodBounds("month"));
+  // Paying the card bill takes cash out of the available balance: warn (non-blocking) if it's more than you have.
+  // When editing, ignore this transfer's old effect so it isn't counted twice.
+  const cashOut = Math.max(0, -transferCashEffect({ from, to, amount: value }));
+  const available = availableBalance(transactions, transfers, loans, settings, { transferId: existing?.id });
+  const short = shortfall(available, cashOut, when, settings.balanceAsOf);
 
   // Picking the current "To" account as "From" swaps them, so From and To are never the same.
   const pickFrom = (a: TransferAccount) => {
@@ -157,10 +176,10 @@ function TransferForm({ editId }: { editId: string | null }) {
             </button>
           </div>
           <AccountChips label="To" value={to} disabled={from} onPick={setTo} />
-          {isCardBill({ from, to }) && (
+          {(isCardBill({ from, to }) || isCardAdvance({ from, to })) && (
             <p className="flex items-start gap-2 rounded-lg bg-[#e3eefc] px-3 py-2.5 text-sm text-[#1d5aa3]">
               <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
-              {CARD_BILL_HINT}
+              {transferHint({ from, to })}
             </p>
           )}
         </section>
@@ -186,6 +205,13 @@ function TransferForm({ editId }: { editId: string | null }) {
             <p role="alert" className="mt-3 text-sm text-secondary">
               That amount is too large.
             </p>
+          )}
+          {short && !tooLarge && (
+            <div className="mt-3">
+              <BalanceNotice>
+                <ShortfallText available={short.available} after={short.after} verb="This card bill payment" />
+              </BalanceNotice>
+            </div>
           )}
         </section>
 
@@ -262,7 +288,7 @@ function TransferForm({ editId }: { editId: string | null }) {
             <EmptyState
               icon={ArrowLeftRight}
               title="No transfers yet"
-              body="Record money you move between your bank, UPI, cash and credit card. It never counts as spending."
+              body="Record money you move between your bank, UPI, cash and credit card, like paying the card bill. It never counts as spending."
             />
           ) : (
             <>
@@ -365,8 +391,8 @@ function Illustration({ from, to }: { from: TransferAccount; to: TransferAccount
         ))}
       </div>
       <p className="relative mt-3 text-center text-sm text-on-surface-variant">
-        Move money between your own accounts. Your total balance stays the same, and it&apos;s never counted as
-        spending.
+        Move money between your own accounts. It&apos;s never counted as income or spending. Only paying the credit
+        card bill (or taking cash from the card) changes your available balance.
       </p>
     </section>
   );

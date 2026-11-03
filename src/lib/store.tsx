@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useState } from "rea
 import { DatabaseZap, RotateCw } from "lucide-react";
 import { Splash } from "@/components/Splash";
 import { emptyBudget, emptySettings, type Budget, type Settings, type Transaction } from "./data";
+import type { CardSettings } from "./creditCard";
 import type { Loan } from "./loans";
 import type { Transfer, TransferInput } from "./transfers";
 
@@ -24,8 +25,10 @@ type Ctx = {
   budget: Budget;
   saveBudget: (b: Budget) => Promise<void>;
   settings: Settings;
-  /** Saves the balance; the server stamps balanceAsOf = now. */
-  saveSettings: (s: Pick<Settings, "openingBalance">) => Promise<void>;
+  /** Saves the balance (+ unpaid credit card amount, default 0); the server stamps balanceAsOf = now. */
+  saveSettings: (s: { openingBalance: number | null; cardDueAtAnchor?: number }) => Promise<void>;
+  /** Sets up / edits (or removes with null) the credit card. Never re-anchors the balance. */
+  saveCard: (card: CardSettings | null) => Promise<void>;
   /** Money lent/borrowed. Affects Total Available Balance, never income/spending. */
   loans: Loan[];
   addLoan: (l: LoanInput) => Promise<Loan>;
@@ -33,7 +36,8 @@ type Ctx = {
   removeLoan: (id: string) => Promise<void>;
   addPayment: (loanId: string, p: PaymentInput) => Promise<void>;
   removePayment: (loanId: string, paymentId: string) => Promise<void>;
-  /** Money moved between the user's own accounts, newest first. Never changes the balance, income or spending. */
+  /** Money moved between the user's own accounts, newest first. Never income or spending; only transfers to/from
+   * the credit card change the available balance (bill payment / cash withdrawal, see lib/creditCard.ts). */
   transfers: Transfer[];
   addTransfer: (t: TransferInput) => Promise<void>;
   updateTransfer: (id: string, t: TransferInput) => Promise<void>;
@@ -203,8 +207,14 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     setBudget(await api<Budget>("/api/budget", { method: "PUT", body: JSON.stringify(b) }));
   }, []);
 
-  const saveSettings = useCallback(async (s: Pick<Settings, "openingBalance">) => {
+  const saveSettings = useCallback(async (s: { openingBalance: number | null; cardDueAtAnchor?: number }) => {
     setSettings(await api<Settings>("/api/settings", { method: "PUT", body: JSON.stringify(s) }));
+  }, []);
+
+  const saveCard = useCallback(async (card: CardSettings | null) => {
+    setSettings(
+      await api<Settings>("/api/settings/card", { method: "PUT", body: JSON.stringify(card ?? { card: null }) }),
+    );
   }, []);
 
   // ── Loans ──
@@ -328,6 +338,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
         saveBudget,
         settings,
         saveSettings,
+        saveCard,
         loans,
         addLoan,
         updateLoan,

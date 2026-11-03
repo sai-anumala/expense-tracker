@@ -28,6 +28,7 @@ import {
 } from "@/lib/data";
 import { errorMessage, useAppData } from "@/lib/store";
 import { availableBalance, shortfall } from "@/lib/balance";
+import { CARD_ACCOUNT, expenseCashOutflow } from "@/lib/creditCard";
 import { BalanceNotice, ShortfallText } from "@/components/BalanceNotice";
 import { sanitizeAmount } from "@/components/AmountForm";
 import { CURRENCY_SYMBOL, money, moneyWhole } from "@/lib/format";
@@ -49,7 +50,7 @@ export default function AddPage() {
 function AddTransaction() {
   const router = useRouter();
   const params = useSearchParams();
-  const { add, update, remove, transactions, loans, settings } = useAppData();
+  const { add, update, remove, transactions, transfers, loans, settings } = useAppData();
 
   // ?id=… → edit an existing transaction; otherwise add a new one.
   const editId = params.get("id");
@@ -76,8 +77,11 @@ function AddTransaction() {
   const value = Number.parseFloat(amount) || 0;
   const tooLarge = value > MAX_AMOUNT;
   // Low-balance warning (non-blocking): only for expenses, ignoring this transaction's old amount when editing.
-  const available = availableBalance(transactions, loans, settings, { transactionId: existing?.id });
-  const short = kind === "expense" ? shortfall(available, value, when, settings.balanceAsOf) : null;
+  const available = availableBalance(transactions, transfers, loans, settings, { transactionId: existing?.id });
+  // Card purchases take no cash now (the bill payment does later), so they never warn.
+  const short =
+    kind === "expense" ? shortfall(available, expenseCashOutflow(value, account), when, settings.balanceAsOf) : null;
+  const onCard = account === CARD_ACCOUNT;
   const bump = (n: number) => setAmount((value + n).toFixed(2));
   const accountOptions = paymentMethods.includes(account) ? paymentMethods : [account, ...paymentMethods];
 
@@ -249,6 +253,13 @@ function AddTransaction() {
               ))}
             </select>
           </Field>
+          {onCard && (
+            <BalanceNotice tone="info">
+              {kind === "expense"
+                ? "Paid by credit card: counts as spending now, but your available balance changes only when you pay the card bill."
+                : "Refund to your credit card: lowers what you owe on the card. Your available balance doesn't change."}
+            </BalanceNotice>
+          )}
           <Field icon={NotebookPen} label={kind === "expense" ? "Note or Merchant" : "Source"}>
             <input
               value={note}

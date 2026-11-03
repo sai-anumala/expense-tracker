@@ -38,9 +38,10 @@ Last updated: 2026-11-03 · Branch model: `develop` → `main` · Live: <https:/
 - **Total available balance** (cash they have, entered at a point in time; only later transactions change it)
 - **Budget** (overall monthly limit and optional per-category limits)
 - **Loans** (money lent to / borrowed from friends, relatives, online apps, banks, with repayments)
-- **Transfers** between their own accounts (Bank, UPI, Cash, Credit Card; e.g. ATM withdrawal, card bill payment). Record-only: never change the balance, never income or spending
+- **Transfers** between their own accounts (Bank, UPI, Cash, Credit Card; e.g. ATM withdrawal, card bill payment). Never income or spending; only transfers to/from the credit card change the available balance
+- **Credit card** (one card): statement day, due day, optional limit; bill to pay, unbilled amount, due date, utilization. Card purchases count as spending but don't reduce the available balance until the bill is paid
 
-Screens: Overview (dashboard), Add/Edit Transaction, Budgets, Analytics, Loans (list, new/edit, detail), Transfer (form + history), Accounts (via "View All"), Login, Sign up.
+Screens: Overview (dashboard), Add/Edit Transaction, Budgets, Analytics, Loans (list, new/edit, detail), Transfer (form + history), Credit Card, Accounts (via "View All"), Login, Sign up.
 Currency: **INR (₹)** with Indian digit grouping. UI derived from a Google Stitch design (see [§13](#13-design-system)).
 
 There is **no mock or sample data** anywhere: every number comes from the signed-in user's MongoDB data.
@@ -141,7 +142,7 @@ App Router
         on mount: GET /api/auth/me, /api/transactions, /api/budget, /api/settings, /api/loans, /api/transfers (parallel)
         shows spinner → data | error screen with "Try again"
         exposes useAppData(): { user, logout, transactions, add, update, remove,
-                                budget, saveBudget, settings, saveSettings,
+                                budget, saveBudget, settings, saveSettings, saveCard,
                                 loans, addLoan, updateLoan, removeLoan, addPayment, removePayment,
                                 transfers, addTransfer, updateTransfer, removeTransfer }
         pages compute all metrics client-side from that data (src/lib/insights.ts)
@@ -178,7 +179,8 @@ src/
 │  ├─ (app)/accounts/page.tsx    Totals per payment method + full history with filter (reached via "View All")
 │  ├─ (app)/loans/page.tsx       Loans tab: You'll get / You owe, I lent / I borrowed buttons, Open/Settled lists
 │  ├─ (app)/loans/new/page.tsx   Create or edit (`?id=`) a loan; `?dir=lent|borrowed` preselect
-│  ├─ (app)/transfer/page.tsx    Transfer form (From/To chips, amount, date, note; `?id=` edit) + this-month summary + history
+│  ├─ (app)/transfer/page.tsx    Transfer form (From/To chips, amount, date, note; `?id=` edit; `?from=&to=&amount=` prefill) + bill-payment low-balance warning + this-month summary + history
+│  ├─ (app)/card/page.tsx        Credit Card screen: setup/edit/remove card, bill to pay + due badge, Pay bill → Transfer, unbilled/total due, limit bar, this-cycle + last-statement lists
 │  ├─ (app)/loans/[id]/page.tsx  Loan detail: progress, record repayment / Settle in full, history, edit, delete
 │  └─ api/
 │     ├─ health/route.ts         GET public status {db, auth}; never leaks error details
@@ -187,7 +189,8 @@ src/
 │     ├─ transactions/route.ts   GET list, POST create
 │     ├─ transactions/[id]/route.ts  PUT update, DELETE
 │     ├─ budget/route.ts         GET, PUT (replace whole budget)
-│     ├─ settings/route.ts       GET, PUT (opening balance)
+│     ├─ settings/route.ts       GET, PUT (balance + unpaid card amount; re-anchors)
+│     ├─ settings/card/route.ts  PUT card setup `{statementDay, dueDay, limit?}` or `{card: null}` (no re-anchor)
 │     ├─ loans/route.ts · loans/[id] · loans/[id]/payments · loans/[id]/payments/[paymentId]
 │     └─ transfers/route.ts      GET list, POST create · transfers/[id]/route.ts PUT update, DELETE
 ├─ components/
@@ -197,6 +200,7 @@ src/
 │  ├─ TransactionRow.tsx         Transaction row on SwipeActions (View · Edit · Delete), details pop-up, delete confirm; EmptyState
 │  ├─ TransferRow.tsx            Transfer row on SwipeActions (blue ⇄ tile, neutral amount; View · Edit · Delete), details pop-up, TransferIcon
 │  ├─ AmountForm.tsx             Inline ₹ amount form (validates, shows its own errors); sanitizeAmount()
+│  ├─ BalanceForm.tsx            Overview balance entry: Bank + UPI + cash (required) + unpaid credit card amount (optional, empty = 0)
 │  ├─ ConfirmDialog.tsx          <dialog> Yes/Cancel modal (danger variant, busy state)
 │  ├─ DateTimePicker.tsx         Field + compact centered calendar/time pop-up; formatWhen(); future dates disabled
 │  ├─ AuthForm.tsx               Login/Signup form; safeNext() prevents open redirects
@@ -216,12 +220,14 @@ src/
 │  ├─ authInput.ts   (server)    validateEmail/Password/Name, normalizeEmail
 │  ├─ rateLimit.ts   (server)    MongoDB fixed-window limiter: hit/check/clear, rateKey (SHA-256), clientIp, tooMany (429 + Retry-After); fails open
 │  ├─ transactionInput.ts (server) parseTransactionInput (all tx validation), toTransactionDto
-│  ├─ balance.ts                 availableBalance (excl. edited record), shortfall (low-balance check)
+│  ├─ balance.ts                 availableBalance(transactions, transfers, loans, settings, exclude) via availableCashEvents (excl. edited record), shortfall (low-balance check)
+│  ├─ creditCard.ts              (shared, pure) card model: CARD_ACCOUNT, availableCashEvents, transferCashEffect, expenseCashOutflow, cardDueEvents, statement dates, cardSummary, currentCardDue, needsCardDuePrompt, cardDuesLine
+│  ├─ settingsInput.ts (server)  parseBalanceInput, parseCardInput, toSettingsDto
 │  ├─ csv.ts         (client)    csvDateTime/csvDate/csvAmount, toCsv (escaping + injection guard), slug, downloadCsv (BOM)
 │  ├─ loanExport.ts              loansSummaryRows, personStatementRows (pure; used by Loans CSV buttons)
 │  ├─ loans.ts                   (shared) Loan types, loanStatus, nextPaymentDate, loanCashEvents, loanTotals, source labels
 │  ├─ loanInput.ts   (server)    parseLoanInput, parsePaymentInput, toLoanDto
-│  ├─ transfers.ts               (shared, pure) TRANSFER_ACCOUNTS + labels, Transfer type, transferRoute, isCardBill, CARD_BILL_HINT, mergeFeed (tx + transfers by date), transferTotals
+│  ├─ transfers.ts               (shared, pure) TRANSFER_ACCOUNTS + labels, Transfer type, transferRoute, isCardBill/isCardAdvance, CARD_BILL_HINT/CARD_ADVANCE_HINT/OWN_TRANSFER_HINT + transferHint, transferPrefill, mergeFeed (tx + transfers by date), transferTotals
 │  └─ transferInput.ts (server)  parseTransferInput, toTransferDto
 └─ models/  User.ts · Transaction.ts · Budget.ts · Settings.ts · Loan.ts · Transfer.ts · RateLimit.ts
 src/lib/__tests__/  Vitest unit tests (<module>.test.ts) + fixtures.ts builders (see §16)
@@ -268,6 +274,8 @@ All schemas use `timestamps: true` and `strict: "throw"` (unknown fields throw �
 | `key` | String | **unique** = owner's `userId` |
 | `openingBalance` | Number \| null | Total available balance **exactly as entered**, ≥ 0; `null` = not set (dashboard shows the prompt). Field name kept from earlier versions |
 | `balanceAsOf` | Date \| null | When it was entered, **truncated to the minute** (set by the server on every save). Older docs lack it → API returns `updatedAt` instead |
+| `cardDueAtAnchor` | Number \| null | Unpaid credit card amount (billed + unbilled) entered **with** the balance, ≥ 0, at `balanceAsOf`. Saved as 0 when the balance is re-entered without it; null when the balance is cleared. Docs from before the card model lack it → API returns null (Overview shows the one-time prompt) |
+| `card` | `{statementDay 1–28, dueDay 1–28, limit? > 0}` \| null | Single credit card setup (sub-schema, no `_id`, strict). Saved separately; never re-anchors the balance. `null` = not set up |
 
 **`loans`** (`Loan`): one document per loan, repayments embedded
 | Field | Type | Rules |
@@ -329,8 +337,9 @@ All bodies are JSON objects; non-object or invalid JSON → **400**. Mongoose `V
 | `DELETE /api/transactions/:id` | session | – | 200 `{id}` | 404 not found / not owned |
 | `GET /api/budget` | session | – | `{monthlyLimit, categories[]}` (defaults if none) | – |
 | `PUT /api/budget` | session | full budget (replaces) | 200 budget | 400 limits/duplicates |
-| `GET /api/settings` | session | – | `{openingBalance, balanceAsOf}` (ISO or null) | – |
-| `PUT /api/settings` | session | `{openingBalance: number ≥ 0 \| null}` | 200 `{openingBalance, balanceAsOf}`; server sets `balanceAsOf` = now (to the minute), or null when clearing | 400 |
+| `GET /api/settings` | session | – | `{openingBalance, balanceAsOf, cardDueAtAnchor, card}` (ISO / null defaults) | – |
+| `PUT /api/settings` | session | `{openingBalance: number ≥ 0 \| null, cardDueAtAnchor?: number ≥ 0}` | 200 settings; server sets `balanceAsOf` = now (to the minute) and `cardDueAtAnchor` = given or **0**; both null when clearing the balance. `card` untouched | 400 "Opening balance must be 0 or more." / "Unpaid credit card amount must be 0 or more." / too large |
+| `PUT /api/settings/card` | session | `{statementDay, dueDay, limit?}` or `{card: null}` (remove) | 200 full settings; balance and `balanceAsOf` untouched | 400 "Statement day / Due day must be a whole day between 1 and 28.", "Due day must be different from the statement day.", "Credit limit must be more than zero (or leave it empty).", "Credit limit is too large." |
 
 | `GET /api/loans` | session | – | `Loan[]` newest first (max 500) | – |
 | `POST /api/loans` | session | `{direction, person, source, amount, totalDue?, date, dueDate?, monthlyPayment?, paymentDay?, account?, note?}` | 201 `Loan` | 400 with specific reason |
@@ -349,7 +358,7 @@ All bodies are JSON objects; non-object or invalid JSON → **400**. Mongoose `V
 `Transfer` DTO: `{ id, from, to, amount, date, note? }`. Validation in `lib/transferInput.ts`.
 
 `Transaction` DTO: `{ id, merchant, category, amount, date, account? }`. Unknown body fields (e.g. an old `subcategory`) are ignored.
-Validation lives in `lib/transactionInput.ts` (transactions), `lib/authInput.ts` (auth), and inline in budget/settings routes. **Server validation is authoritative**; client checks are UX only.
+Validation lives in `lib/transactionInput.ts` (transactions), `lib/authInput.ts` (auth), `lib/settingsInput.ts` (settings + card), and inline in the budget route. **Server validation is authoritative**; client checks are UX only.
 
 ---
 
@@ -387,7 +396,8 @@ All computed client-side in pages using `lib/insights.ts`. "This month" = local 
 ### Overview dashboard (spec agreed with the product owner; do not change without asking)
 | Metric | Formula |
 |---|---|
-| **Total Available Balance** | `entered balance + Σ income − Σ expenses + loan cash` **counting only transactions and loan events with `date ≥ balanceAsOf`**. Loan cash (`loanCashEvents`): lending −amount, repayment received +; borrowing +amount, repayment made −. Transactions dated earlier are ignored (they're already in the amount the user typed). Implemented by `anchoredBalance()` in `lib/insights.ts` |
+| **Total Available Balance** (Bank + UPI + Cash) | `entered balance + Σ income − Σ expenses (excluding account "Credit Card") − card bill payments + card cash withdrawals + loan cash` **counting only events with `date ≥ balanceAsOf`**. Input = `availableCashEvents(transactions, transfers, loans)` (`lib/creditCard.ts`) into `anchoredBalance()` (`lib/insights.ts`). Loan cash (`loanCashEvents`): lending −amount, repayment received +; borrowing +amount, repayment made −. Events dated earlier are ignored (they're already in the amount the user typed) |
+| **After card dues** (under the balance) | Only when a card is set up and `cardSummary().due ≠ 0` (`cardDuesLine()`). due > 0: "After card dues: ₹X", `X = balance − due`, plus "Card bill ₹billOutstanding (due d MMM) + unbilled ₹unbilled" (zero parts omitted); amber + "Your card dues are more than your cash" when X < 0. due < 0: "Card credit ₹credit" instead. Hidden when due = 0 or no balance. Links to `/card` (title/aria-label carry the breakdown). TAB itself is unchanged |
 | **±x% this mo** badge | `(balance − base) / base × 100`. `base` = entered balance if `balanceAsOf` is this month, else entered + net of transactions in `[balanceAsOf, 1st)`. Never uses transactions before the anchor. Hidden if `base ≤ 0` or \|x\| < 0.05 |
 | **Income** tile | Σ income this month |
 | **Spent** tile | Σ expenses this month (shown as −₹) |
@@ -398,26 +408,27 @@ All computed client-side in pages using `lib/insights.ts`. "This month" = local 
 | Recent transactions | latest **5** items of transactions **and transfers** merged by date, grouped Today / Yesterday / "Oct 28"; group header shows the net of that day's **transactions only** (transfers are net-zero; header hidden if the day has only transfers). Transfer amounts are neutral. Amounts: **expense red** (`text-secondary`), **income green** (`text-primary`) |
 | Insight tip | biggest % change vs last month in a category present both months; hidden if none |
 
-Balance entry: if `null`, the card asks "How much money do you have right now?". The ✎ opens pre-filled with the **current** balance; saving re-anchors (new amount, `balanceAsOf` = now). The value is stored exactly as typed. Hovering the balance shows when it was set.
+Balance entry (`components/BalanceForm.tsx`): if `null`, the card asks "How much money do you have right now in your bank, UPI and cash?". Two fields: the balance and an optional **"Unpaid credit card amount right now (billed + unbilled)"** (empty = 0). The ✎ opens pre-filled with the **current** balance and the current card due (`currentCardDue`, if > 0); saving re-anchors both (`balanceAsOf` = now, `cardDueAtAnchor` = the card amount). The value is stored exactly as typed. Hovering the balance shows when it was set.
+**One-time prompt:** when `needsCardDuePrompt()` (balance set, `cardDueAtAnchor` null = entered before the card model, and a card transaction or card transfer dated ≥ `balanceAsOf`), the Overview shows an info notice "Card purchases no longer reduce your balance. Update your balance and enter what's unpaid on your card." with an **Update balance** button that opens the editor. Saving sets `cardDueAtAnchor`, so it disappears.
 Examples: entered ₹10,000 at 4:30 PM → a ₹500 expense dated 2 PM is ignored (balance stays ₹10,000); a ₹50 expense dated 4:30 PM (same minute) counts → ₹9,950.
 
 Reference scenario (from the spec): budget 3,000, spent 1,830.40 → Remaining 1,169.60; 12 days left → 97.46/day.
 
-### Credit card (single card) — agreed spec 2026-11-03 (`lib/creditCard.ts`)
-A credit card is money you **owe**, not money you have. Core maths is implemented and unit-tested in `lib/creditCard.ts` (`src/lib/__tests__/creditCard.test.ts`); UI/API build on it.
+### Credit card (single card) — agreed spec 2026-11-03, **implemented** (`lib/creditCard.ts`)
+A credit card is money you **owe**, not money you have. Maths in `lib/creditCard.ts` (unit-tested in `src/lib/__tests__/creditCard.test.ts`); wired into the Overview balance, `availableBalance`, the Credit Card screen (`/card`), the Transfer form and the settings API (`PUT /api/settings` `cardDueAtAnchor`, `PUT /api/settings/card`).
 - **Available balance = Bank + UPI + Cash.** A transaction with `account === "Credit Card"` (`CARD_ACCOUNT`) does **not** change Total Available Balance. Use `availableCashEvents(transactions, transfers, loans)` as the input to `anchoredBalance`/`availableBalance` (replaces `[...transactions, ...loanCashEvents]`).
 - **Spending/budgets unchanged:** card purchases are still expenses, so they count in Spent, category budgets and analytics **in the month of purchase**.
 - **Card bill payment** = transfer Bank/UPI/Cash → Card: **reduces the available balance** and the card due; **never spending**. **Cash withdrawal** = transfer Card → Bank/UPI/Cash: adds cash, adds card due. Transfers among Bank/UPI/Cash stay neutral.
 - **Card due** (`cardDueEvents`): purchase +|amount|, refund/credit on the card (income with account Credit Card) −amount, bill payment −amount, cash withdrawal +amount. Starts at `settings.cardDueAtAnchor` (unpaid card amount entered with the balance) at `balanceAsOf`; events before the anchor are ignored.
 - **Statement cycle** (`settings.card = { statementDay 1–28, dueDay 1–28, limit? }`): the statement closes at the end of `statementDay`; due date = `dueDay` of the same month if `dueDay > statementDay`, else of the next month (`dueDateFor`). `cardSummary()` returns `due`, `billed`, `billOutstanding` (billed − payments since the statement), `unbilled` (rest of due), `credit` (overpaid), `dueDate`, `daysToDue`, `overdue`, `utilization` (due/limit), `unbilledEvents`, `billedEvents`. If the anchor is after the last statement, the entered unpaid amount counts as the current bill until the next statement.
-- **Low-balance warnings:** card purchases never warn (they don't touch cash); a card bill payment warns if it exceeds the available balance.
-- **Reminders (bell):** card bill due within 5 days / overdue, card utilization ≥ 80%, loan next payment within 3 days / overdue, budget ≥ 90% (monthly or category). In-app only.
+- **Low-balance warnings:** card purchases never warn (`expenseCashOutflow` = 0 for account "Credit Card"); a card bill payment (transfer → card) warns on the Transfer form if it exceeds the available balance.
+- **Reminders (bell):** card bill due within 5 days / overdue, card utilization ≥ 80%, loan next payment within 3 days / overdue, budget ≥ 90% (monthly or category). In-app only (built separately from the card screen).
 
 ### Low-balance warnings (`lib/balance.ts`, `components/BalanceNotice.tsx`)
 - **Never block saving**; amber "warn" or neutral "info" notice only.
-- `availableBalance(transactions, loans, settings, {transactionId?, loanId?})` = current Total Available Balance, excluding the record being edited (no double counting); `null` when no balance is set → no warnings.
+- `availableBalance(transactions, transfers, loans, settings, {transactionId?, transferId?, loanId?})` = current Total Available Balance (via `availableCashEvents`, so card purchases don't count and card bill payments do), excluding the record being edited (no double counting); `null` when no balance is set → no warnings.
 - `shortfall(available, outflow, date, balanceAsOf)` warns when money **going out** exceeds what's available, only if the item is dated ≥ `balanceAsOf` (earlier items don't change the balance).
-- Where: **Add/Edit expense** (under the amount), **I lent** loan form (under the amount), **repayment of a borrowed loan** (loan detail). Income and money received back never warn. Wording via `ShortfallText` (handles an already-negative balance).
+- Where: **Add/Edit expense** (under the amount; **not** when paid with Credit Card), **I lent** loan form (under the amount), **repayment of a borrowed loan** (loan detail), **Transfer form** for a card bill payment (any transfer that takes cash out; only X → card does). Income, money received back and card cash withdrawals never warn. Wording via `ShortfallText` (handles an already-negative balance).
 - **Budgets (info):** monthly budget > available balance; category budgets total > monthly budget.
 
 ### Loans (lend & borrow)
@@ -428,8 +439,8 @@ A credit card is money you **owe**, not money you have. Core maths is implemente
 - Open list order: overdue first, then nearest next payment / due date, then newest.
 
 ### Transfers (own accounts; `lib/transfers.ts`)
-- **Simple one-total model:** a transfer only records that money moved (Bank/UPI/Cash/Credit Card). It **never changes Total Available Balance** (not passed to `anchoredBalance`/`availableBalance`), and is **never income or spending**: excluded from Income/Spent/Remaining tiles, budgets, analytics + its CSV, Accounts per-method totals and low-balance warnings. No per-account balances.
-- **Credit card bill = transfer:** any non-card account → `card` (`isCardBill`) shows the hint "Card bill payment. Not counted as spending, because the purchases were already recorded as expenses." Any other pair is allowed; `from ≠ to`.
+- **One-total model:** a transfer records that money moved (Bank/UPI/Cash/Credit Card) and is **never income or spending**: excluded from Income/Spent/Remaining tiles, budgets, analytics + its CSV, Accounts per-method totals. No per-account balances. Bank/UPI/Cash ↔ each other: **no effect** on Total Available Balance. Under the card model (`transferCashEffect`): **X → card** (bill payment) −amount, **card → X** (cash withdrawal) +amount.
+- **Hints** (`transferHint`): X → card: "Card bill payment: reduces your available balance and what you owe on the card. Not counted as spending — the purchases were already recorded." (`CARD_BILL_HINT`); card → X: "Cash withdrawal from your credit card: adds to your available balance and to what you owe on the card. Not counted as income." (`CARD_ADVANCE_HINT`); others: `OWN_TRANSFER_HINT`. Any pair is allowed; `from ≠ to`.
 - **Overview Recent Transactions** = latest **5** of transactions and transfers merged by date (`mergeFeed`; ties keep transactions first). The day-group "net" header sums **transactions only** (hidden when a day shows only transfers).
 - Transfer screen summary: "This month: N transfers · ₹X" (`transferTotals` over the current month).
 
@@ -465,6 +476,7 @@ A credit card is money you **owe**, not money you have. Core maths is implemente
   - Category grid (4 columns): first shows `primaryCategories` (Food, Groceries, Transport, Shopping, Fun & Subs, Bills, Health) + a dashed **Show more** tile. Show more expands the same grid with `moreCategories` (Sending home, Fuel, Sent to friend, Rent, Education, Gifts, Personal care, **Other**) and the tile becomes **Show less**. Opens expanded when editing a transaction whose category is in `moreCategories`. No free-text categories (use the note).
   - New → saves immediately. **Edit → "Save changes?" confirm (Yes/Cancel). Delete → danger confirm.** On success → `/`.
   - Unknown/foreign id → "Transaction not found" screen.
+  - Payment method **Credit Card** shows an info notice (expense: "counts as spending now, but your available balance changes only when you pay the card bill"; income: refund lowers what you owe) and never shows the low-balance warning.
 - **DateTimePicker:** field shows "Today, 2:45 PM" / "Yesterday, …" / "Fri, 24 Oct, …"; tapping opens a **compact centered pop-up** (max 20rem wide, 1rem margin on phones) with preview, Now/Yesterday/2 days ago, Monday-first calendar, hour/minute/AM-PM; future days and times disabled; Done/Cancel; Esc or backdrop tap closes.
 - **Transaction rows** (Overview recent list, Accounts history; built on `SwipeActions`): **swipe left** (touch or mouse drag) or **tap / Enter** to reveal three actions: **View** (read-only details pop-up with an Edit button), **Edit** (`/add?id=…`), **Delete** (confirm dialog, "Yes, delete"). Only one row is open at a time (window event `ledgerly:row-open`); vertical scrolling stays native (`touch-action: pan-y`). Rows no longer navigate on tap.
 - **Monthly Budget card:** app font with tabular digits; the spent/cap row and the "Daily safe pace" row wrap on narrow phones, with "N days left" in its own pill so they never collide.
@@ -474,9 +486,11 @@ A credit card is money you **owe**, not money you have. Core maths is implemente
 - **Loan detail** (`/loans/[id]`): outstanding (hero), progress, details (dates, plan, next payment, note); **Record repayment** with **Settle in full · ₹X** and **Monthly · ₹Y** quick-fill chips, date, method, note → confirm ("Record & settle loan" when it clears the balance); repayment history with remove (confirm); **Download <person>'s statement (CSV)** (covers every loan with that person; a hint shows how many others are included); Edit loan; Delete loan (danger confirm).
 - **Header:** logo + subtitle, bell (no-op), UserMenu (initials → name/email, **Change password**, Log out).
 - **Change password dialog** (`components/ChangePasswordDialog.tsx`, from the account menu): compact centered `<dialog>` (rounded-2xl, `w-[min(22rem,calc(100%-2rem))]`) with Current password, New password (show/hide toggle for all fields, "At least 8 characters" hint), Confirm new password. Client checks (required, length, match, different) then server errors inline (`role="alert"`); busy "Saving…"; success shows "Password changed" (motion-safe pop) and closes after ~1.8 s or on Done. Esc / backdrop / Cancel close it (not while busy). No extra confirm dialog: entering the current password is the confirmation.
-- **Bottom nav:** Overview, Analytics, [+ FAB → /add], Budgets, **Loans**. Accounts is reached via "View All" on Recent Transactions. Quick actions: Add Expense, Add Income, **Transfer** (→ `/transfer`), Lend / Borrow.
-- **Transfer** (`/transfer`, `/transfer?id=…` to edit): compact animated header (From-account icon → coins → To-account icon, dashed line; `motion-safe:`), **From** and **To** chip rows (Bank, UPI, Cash, Credit Card) with a swap button; the From account is disabled in the To row, and picking the current To as From swaps them. Card-bill hint (blue) when To = Credit Card. Big amount input (same style as Add Expense, `sanitizeAmount`), DateTimePicker, optional note (≤ 120). New → saves directly, shows a "Saved …" status and resets the form; Edit → "Save changes to this transfer?" confirm, then back to `/transfer`. Server errors inline (`role="alert"`). Unknown id → "Transfer not found". Below: "Your transfers" history (newest first) with "This month: N transfers · ₹X", rows via `TransferRow`; empty state. Not in the bottom nav (a 6th item would crowd small phones). All animations use `motion-safe:` (keyframes `ledgerly-travel/float/shimmer/fade-up/dash/pop/ring/progress/fade-in` in `globals.css`).
-- **Transfer rows** (`components/TransferRow.tsx`, on `SwipeActions`, same structure as transaction rows): blue ⇄ tile (`bg-[#e3eefc] text-[#2a78d6]`), title = note or "Card bill payment"/"Transfer", line "Bank → Cash · 2:45 PM", amount in **neutral** text (`₹2,000.00`, no sign, not red/green). Actions: View (details pop-up with Edit), Edit (`/transfer?id=…`), Delete (danger confirm). Shown in Overview Recent Transactions, Accounts history (with a payment-method filter, transfers whose From/To label equals the method name, e.g. "UPI", "Cash", "Credit Card") and the Transfer screen.
+- **Bottom nav:** Overview, Analytics, [+ FAB → /add], Budgets, **Loans**. Accounts is reached via "View All" on Recent Transactions. Quick actions: Add Expense, Add Income, **Credit Card** (→ `/card`), Lend / Borrow. Transfer is reached from the Credit Card screen ("Pay bill" and a "Transfer between your accounts" link).
+- **Overview balance card:** under the figure, the **After card dues** line (see §11; neutral, amber when dues exceed cash; links to `/card`) and, once, the card-due info prompt with **Update balance**. The editor has two fields (balance + unpaid credit card amount).
+- **Credit Card** (`/card`): not set up → intro (3 bullets), **setup form**: Statement day + Bill due day selects (1st–28th, must differ; hint "due on the due day of the same/next month"), optional Credit limit; also shows what's currently owed if anything. Set up → hero **Bill to pay** (₹billOutstanding; red when overdue) with a badge "Due 5 Nov · in 2 days" (amber ≤ 5 days, red "Overdue", green "All paid"), statement line, **Pay bill ₹X** (or **Pay early ₹due** when no bill but something is owed) → `/transfer?from=bank&to=card&amount=X`; tiles **Unbilled** (next statement date) and **Total due** (or **Card credit** when overpaid); **Credit limit** bar (`% used`, amber ≥ 80%, "₹X of ₹limit", available credit) when a limit is set; lists **This cycle (unbilled)** and **Last statement** using `TransactionRow`/`TransferRow` swipe rows (empty states); details line + **Edit card** (same form inline) and **Remove card** (danger ConfirmDialog; transactions/transfers kept). A "Transfer between your accounts" link sits at the end. Fade-up entrance is `motion-safe:`.
+- **Transfer** (`/transfer`, `/transfer?id=…` to edit, `/transfer?from=bank&to=card&amount=1234.50` to prefill a NEW transfer via `transferPrefill`; bad params fall back to Bank → Cash, empty amount): compact animated header (From-account icon → coins → To-account icon, dashed line; `motion-safe:`), **From** and **To** chip rows (Bank, UPI, Cash, Credit Card) with a swap button; the From account is disabled in the To row, and picking the current To as From swaps them. Blue hint for card bill payments (To = Credit Card) and card cash withdrawals (From = Credit Card); amber low-balance warning under the amount when a bill payment is more than the available balance (non-blocking). Big amount input (same style as Add Expense, `sanitizeAmount`), DateTimePicker, optional note (≤ 120). New → saves directly, shows a "Saved …" status and resets the form; Edit → "Save changes to this transfer?" confirm, then back to `/transfer`. Server errors inline (`role="alert"`). Unknown id → "Transfer not found". Below: "Your transfers" history (newest first) with "This month: N transfers · ₹X", rows via `TransferRow`; empty state. Not in the bottom nav (a 6th item would crowd small phones). All animations use `motion-safe:` (keyframes `ledgerly-travel/float/shimmer/fade-up/dash/pop/ring/progress/fade-in` in `globals.css`).
+- **Transfer rows** (`components/TransferRow.tsx`, on `SwipeActions`, same structure as transaction rows): blue ⇄ tile (`bg-[#e3eefc] text-[#2a78d6]`), title = note or "Card bill payment"/"Card cash withdrawal"/"Transfer", line "Bank → Cash · 2:45 PM", amount in **neutral** text (`₹2,000.00`, no sign, not red/green). Actions: View (details pop-up with Edit), Edit (`/transfer?id=…`), Delete (danger confirm). Shown in Overview Recent Transactions, Accounts history (with a payment-method filter, transfers whose From/To label equals the method name, e.g. "UPI", "Cash", "Credit Card") and the Transfer screen.
 - **Launch splash** (`components/Splash.tsx`): while the signed-in app loads, the logo tile pops in (spring), one soft ring pulse, "Ledgerly" + tagline "Track every rupee, calmly." slide up, a thin progress line glides; shown for **at least 800 ms** (`introDone` in the provider) so it finishes, longer only if data is still loading; then the app fades in (0.4 s). Plays on app open only (the `(app)` layout persists across tabs). Login/Sign-up get the same entrance (logo pop, staggered fade-up). All `motion-safe:`.
 - **Loading:** the launch splash (above). **Load error:** "Couldn't load your data" + reason + Try again. **Empty states** on every list.
 - **Errors:** forms show server messages inline (`role="alert"`); network → "You're offline…" / "Can't reach the server…"; 15 s request timeout.
@@ -509,7 +523,8 @@ Tokens are defined in `src/app/globals.css` under `@theme` and used as Tailwind 
 2. **No mock or sample data, no localStorage for app data.** Everything comes from MongoDB via the API.
 3. **Every data query is scoped to the signed-in user.** New collections need an owner field and `requireUser()`.
 3a. **Loans are not transactions.** Never count loan money as income or spending; it only affects the balance via `loanCashEvents`. "Sending home" stays an expense category (planned monthly outflow).
-3b. **Transfers are not transactions.** Money moved between the user's own accounts never changes Total Available Balance and is never income or spending; keep transfers out of every total (balance, tiles, budgets, analytics/CSV, Accounts totals, day-net headers, low-balance warnings). They are only displayed in history lists.
+3b. **Transfers are not transactions.** Money moved between the user's own accounts is never income or spending; keep transfers out of tiles, budgets, analytics/CSV, Accounts totals and day-net headers. The **only** balance effect is the card model: X → card −amount, card → X +amount (`availableCashEvents`/`transferCashEffect`); Bank/UPI/Cash moves are neutral.
+3c. **Card purchases are spending but not cash.** Expenses with account "Credit Card" (`CARD_ACCOUNT`) count in Spent/budgets/analytics but never in Total Available Balance. Always compute the balance with `availableCashEvents(transactions, transfers, loans)`, never `[...transactions, ...]` directly.
 4. **API responses** use `ok()` / `fail()` / `dbErrorResponse()` from `lib/api.ts`; validate with explicit, human-readable messages; wrap DB calls in try/catch.
 5. **Amounts:** sign encodes type (expense < 0); round with `toPaise`; display with `money()`/`signedMoney()`/`moneySigned()` (balances)/`moneyWhole()` (INR, `en-IN`). Never hardcode `₹` or `$`; use `CURRENCY_SYMBOL`.
 6. **Destructive or modifying actions on existing records require a confirm dialog** (`ConfirmDialog`).
@@ -541,7 +556,7 @@ Also bump "Last updated" at the top. Keep entries factual and short; link to fil
 ### Unit tests (Vitest)
 - Run: `npm test` (single run, as in CI) or `npm run test:watch`. Takes about a second; no network, no database.
 - Location: `src/lib/__tests__/<module>.test.ts` (one file per module in `src/lib`). Shared builders (`tx`, `loan`, `payment`, `local`, `iso`) live in `src/lib/__tests__/fixtures.ts`.
-- Covered: `insights` (period bounds, totals, `anchoredBalance`), `loans`, `balance`, `csv`, `loanExport`, and the server validators `transactionInput`, `loanInput`, `authInput`. Not covered: React components, API routes, Mongoose models.
+- Covered: `insights` (period bounds, totals, `anchoredBalance`), `loans`, `balance`, `csv`, `loanExport`, `creditCard`, `transfers`, and the server validators `transactionInput`, `loanInput`, `authInput`, `transferInput`, `settingsInput`. Not covered: React components, API routes, Mongoose models.
 - Config: `vitest.config.mts`: `@/*` → `src/*` alias, `environment: "node"`, `server-only` aliased to the empty `test/server-only-stub.ts` (so server validators import cleanly). `test/setup.ts` deletes `MONGODB_URI` and restores real timers after each test.
 - **Time zone is pinned to `Asia/Kolkata`** (set in the config and the setup file), so local-date maths gives the same results on any machine. Use `local()`/`iso()` from fixtures for dates and `vi.useFakeTimers()` + `vi.setSystemTime()` wherever "now" matters.
 - Convention: a known bug can be pinned with `it.fails` (listed in §19); when it's fixed the test starts failing, so switch it to `it`. (The first one, `slug()` splitting Devanagari/accented names, was fixed on 2026-11-03.)
@@ -584,7 +599,8 @@ For isolated tests use a **temporary local MongoDB** (`mongod --dbpath <tmp> --p
 | A user sees no data after signup | Expected: new accounts start empty; legacy ownerless data is hidden |
 | Thousands of lint/tsc errors from `.claude/worktrees/...` | Sub-agent worktrees live inside the repo. They are excluded in `eslint.config.mjs` (`.claude/**`), `tsconfig.json` (`exclude`) and `.gitignore` (`.claude/worktrees/`); keep those exclusions |
 | "Too many login attempts" while testing locally | Per-email/IP counters live in the `ratelimits` collection of the **shared** DB. Wait for `Retry-After`, or (local/temporary DB only) delete the doc; keys are hashes, so `db.ratelimits.deleteMany({})` on a scratch DB. Without a proxy, local requests all share IP `unknown` unless `x-forwarded-for` is sent |
-| A transaction doesn't change the Total Available Balance | Its date is earlier than when the balance was entered (`balanceAsOf`); by design. Re-enter the balance via ✎ if needed |
+| A transaction doesn't change the Total Available Balance | Its date is earlier than when the balance was entered (`balanceAsOf`); by design. Re-enter the balance via ✎ if needed. Card purchases (paid with "Credit Card") never change it; paying the bill does |
+| Existing user's balance jumped after the credit card release | Card purchases since `balanceAsOf` stopped reducing it, and card bill transfers started reducing it. Expected until they re-enter the balance with the unpaid card amount (the Overview shows a one-time "Update balance" prompt while `cardDueAtAnchor` is null) |
 
 ---
 
@@ -619,6 +635,7 @@ For isolated tests use a **temporary local MongoDB** (`mongod --dbpath <tmp> --p
 | 2026-11-03 | Auth rate limiting stored in MongoDB (`ratelimits`, TTL index, hashed keys, fail open) + Change password (`POST /api/auth/password`, account-menu dialog) | User request. Vercel serverless has no shared memory; no new dependency or provider (Redis) needed. Fail open so a counter problem never locks users out |
 | 2026-10-31 | Upgraded Next 15.5.28 / React 19.1.10 / Mongoose 8.24.x | Security advisories; Vercel deploy block |
 | 2026-11-03 | Vitest unit tests for pure business logic (`src/lib/__tests__`), TZ pinned to Asia/Kolkata, `server-only` stubbed. Chose the mature 4.1.x line (4.1.12) over the newer 5.x | Lock in §11 formulas and server validation without touching the DB; no app behaviour changed |
+| 2026-11-03 | Credit card wired in: `/card` screen replaces the Transfer quick action; card setup saved via separate `PUT /api/settings/card` (no re-anchor); unpaid card amount entered with the balance (default 0); one-time prompt for legacy balances; "After card dues" line on the Overview; due day must differ from statement day | User decisions (final). Separate endpoint so editing the card never moves the balance anchor; equal days would make the bill due when the next statement closes |
 | 2026-11-03 | **Transfers** between own accounts replace the "Coming soon" page: simple one-total model (no per-account balances), fixed accounts Bank/UPI/Cash/Credit Card, credit card bill = transfer, shown in Recent Transactions / Accounts history, excluded from every total | User decisions (final). Card purchases are already expenses, so paying the bill must not count twice |
 
 ---
@@ -635,6 +652,7 @@ For isolated tests use a **temporary local MongoDB** (`mongod --dbpath <tmp> --p
 - Transactions list capped at 1000 per user (no pagination).
 - Shared DB across preview/dev/prod (see §5).
 - No account deletion or profile edit UI.
-- No per-account balances (simple model): transfers are recorded but Bank/UPI/Cash/Card balances aren't tracked separately. Transfers list capped at 1000 per user.
+- No per-account balances (simple model): transfers are recorded but Bank/UPI/Cash balances aren't tracked separately. Transfers list capped at 1000 per user.
+- Credit card phase 2: **multiple cards**, card EMI / interest / late fees, minimum amount due, statement history beyond the last cycle. The Pay bill link always defaults to From = Bank.
 - Loans phase 2: interest rate and EMI schedule/amortisation, missed-instalment detection (today only past `dueDate` = Overdue), due-date reminders, link a repayment to a transaction.
 - Cleanup pending: test user `test.user@ledgerly-demo.dev`; legacy `settings` doc `key:"default"`.

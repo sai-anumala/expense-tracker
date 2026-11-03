@@ -14,14 +14,15 @@ import {
   CirclePlus,
   Banknote,
   HandCoins,
-  ArrowLeftRight,
+  CreditCard,
   ChevronRight,
   Lightbulb,
   ReceiptText,
   Pencil,
   X,
 } from "lucide-react";
-import { AmountForm } from "@/components/AmountForm";
+import { BalanceForm } from "@/components/BalanceForm";
+import { BalanceNotice } from "@/components/BalanceNotice";
 import { AppHeader, MonthPill, ProgressBar } from "@/components/ui";
 import { TabPage } from "@/components/BottomNav";
 import { EmptyState, TransactionRow } from "@/components/TransactionRow";
@@ -29,14 +30,15 @@ import { TransferRow } from "@/components/TransferRow";
 import { useAppData } from "@/lib/store";
 import { categories, type Transaction } from "@/lib/data";
 import { mergeFeed, type FeedItem } from "@/lib/transfers";
-import { loanCashEvents, loanTotals } from "@/lib/loans";
+import { loanTotals } from "@/lib/loans";
+import { availableCashEvents, cardDuesLine, cardSummary, currentCardDue, needsCardDuePrompt } from "@/lib/creditCard";
 import { anchoredBalance, categoryInsight, net, periodBounds, totalIncome, totalSpent, within } from "@/lib/insights";
-import { dayBucket, daysLeftInMonth, plural, money, monthLabel } from "@/lib/format";
+import { dayBucket, dayMonth, daysLeftInMonth, plural, money, moneySigned, monthLabel } from "@/lib/format";
 
 const quickActions: { label: string; icon: typeof CirclePlus; href: string; accent?: boolean }[] = [
   { label: "Add Expense", icon: CirclePlus, href: "/add", accent: true },
   { label: "Add Income", icon: Banknote, href: "/add?kind=income" },
-  { label: "Transfer", icon: ArrowLeftRight, href: "/transfer" },
+  { label: "Credit Card", icon: CreditCard, href: "/card" },
   { label: "Lend / Borrow", icon: HandCoins, href: "/loans/new" },
 ];
 
@@ -48,16 +50,23 @@ export default function Dashboard() {
   const [monthStart] = periodBounds("month");
   const thisMonth = within(transactions, periodBounds("month"));
 
-  // Total Available Balance = entered balance + transactions dated at/after it was entered (see anchoredBalance).
+  // Total Available Balance (Bank + UPI + Cash) = entered balance + cash events dated at/after it was entered
+  // (see anchoredBalance). Card purchases don't count; card bill payments do. Loans move cash too, but never
+  // count as income or spending (lib/creditCard.ts availableCashEvents).
   const opening = settings.openingBalance;
   const asOf = settings.balanceAsOf ? new Date(settings.balanceAsOf) : null;
-  // Loans move cash too (lent/repaid/borrowed), but never count as income or spending.
   const { balance, base } = anchoredBalance(
-    [...transactions, ...loanCashEvents(loans)],
+    availableCashEvents(transactions, transfers, loans),
     opening,
     settings.balanceAsOf,
     monthStart,
   );
+  // "After card dues" line (only with a card set up and something owed / overpaid).
+  const card = settings.card ? cardSummary(transactions, transfers, settings.card, settings) : null;
+  const dues = cardDuesLine(opening === null ? null : balance, card);
+  // One-time prompt for balances entered before the card model (unpaid card amount never entered).
+  const askCardDue = needsCardDuePrompt(transactions, transfers, settings);
+  const cardDueNow = Math.max(0, currentCardDue(transactions, transfers, settings));
   const loanSum = loanTotals(loans);
   const growth = base !== null && base > 0 ? ((balance - base) / base) * 100 : null;
 
@@ -135,15 +144,16 @@ export default function Dashboard() {
             {opening === null || editingOpening ? (
               <div>
                 <p className="text-sm text-on-surface-variant">
-                  How much money do you have right now? From this moment on, income you record adds to it and
-                  spending subtracts from it. Transactions dated earlier won&apos;t change it.
+                  How much money do you have right now in your bank, UPI and cash? From this moment on, income you
+                  record adds to it and spending subtracts from it. Credit card purchases don&apos;t; paying the card
+                  bill does. Transactions dated earlier won&apos;t change it.
                 </p>
-                <AmountForm
-                  label="Total available balance"
-                  initial={opening === null ? undefined : Math.round(balance * 100) / 100}
+                <BalanceForm
+                  initialBalance={opening === null ? undefined : Math.round(balance * 100) / 100}
+                  initialCardDue={cardDueNow > 0 ? cardDueNow : undefined}
                   onCancel={opening !== null ? () => setEditingOpening(false) : undefined}
                   onSave={async (v) => {
-                    await saveSettings({ openingBalance: v }); // errors are shown by AmountForm
+                    await saveSettings(v); // errors are shown by BalanceForm
                     setEditingOpening(false);
                   }}
                 />
@@ -167,6 +177,22 @@ export default function Dashboard() {
                   <span className="font-medium text-on-surface-variant">.{cents}</span>
                 </span>
               </div>
+            )}
+
+            {dues && !editingOpening && <CardDuesLink dues={dues} />}
+
+            {askCardDue && !editingOpening && (
+              <BalanceNotice tone="info">
+                Card purchases no longer reduce your balance. Update your balance and enter what&apos;s unpaid on your
+                card.{" "}
+                <button
+                  type="button"
+                  onClick={() => setEditingOpening(true)}
+                  className="font-semibold text-primary underline underline-offset-2"
+                >
+                  Update balance
+                </button>
+              </BalanceNotice>
             )}
 
             {/* Triad metrics: this month */}
@@ -355,6 +381,54 @@ export default function Dashboard() {
         )}
       </TabPage>
     </>
+  );
+}
+
+/** "After card dues: ₹X" (+ breakdown) or "Card credit ₹X"; links to the Credit Card screen. */
+function CardDuesLink({ dues }: { dues: NonNullable<ReturnType<typeof cardDuesLine>> }) {
+  if (dues.kind === "credit") {
+    const label = `Card credit ${money(dues.credit)}: you have paid more than you owe on your credit card`;
+    return (
+      <Link
+        href="/card"
+        title={label}
+        aria-label={label}
+        className="flex items-center gap-1.5 self-start rounded-lg px-1 text-sm text-on-surface-variant hover:bg-surface-container-low"
+      >
+        <CreditCard className="size-4 shrink-0" aria-hidden />
+        Card credit <b className="font-semibold tabular-nums text-on-surface">{money(dues.credit)}</b>
+        <ChevronRight className="size-4 shrink-0 text-outline" aria-hidden />
+      </Link>
+    );
+  }
+  const parts = [
+    dues.bill > 0 ? `Card bill ${money(dues.bill)} (due ${dayMonth(dues.dueDate)})` : null,
+    dues.unbilled > 0 ? `unbilled ${money(dues.unbilled)}` : null,
+  ].filter(Boolean);
+  const breakdown = parts.join(" + ");
+  const label = `After card dues: ${moneySigned(dues.after)}${breakdown ? `. ${breakdown}` : ""}${
+    dues.short ? ". Your card dues are more than your cash" : ""
+  }`;
+  return (
+    <Link
+      href="/card"
+      title={label}
+      aria-label={label}
+      className={`-mx-1 block rounded-lg px-1 py-0.5 text-sm transition hover:bg-surface-container-low ${
+        dues.short ? "text-tertiary" : "text-on-surface-variant"
+      }`}
+    >
+      <span className="flex items-center gap-1.5">
+        <CreditCard className="size-4 shrink-0" aria-hidden />
+        After card dues:{" "}
+        <b className={`font-semibold tabular-nums ${dues.short ? "text-tertiary" : "text-on-surface"}`}>
+          {moneySigned(dues.after)}
+        </b>
+        <ChevronRight className="size-4 shrink-0 text-outline" aria-hidden />
+      </span>
+      {breakdown && <span className="block pl-5.5 text-xs tabular-nums">{breakdown.charAt(0).toUpperCase() + breakdown.slice(1)}</span>}
+      {dues.short && <span className="block pl-5.5 text-xs font-medium">Your card dues are more than your cash</span>}
+    </Link>
   );
 }
 

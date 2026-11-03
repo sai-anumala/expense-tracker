@@ -1,5 +1,52 @@
 import { describe, expect, it } from "vitest";
-import { isCardBill, isTransferAccount, mergeFeed, transferRoute, transferTotals, type Transfer } from "../transfers";
+import {
+  CARD_ADVANCE_HINT,
+  CARD_BILL_HINT,
+  OWN_TRANSFER_HINT,
+  isCardAdvance,
+  isCardBill,
+  isTransferAccount,
+  mergeFeed,
+  transferHint,
+  transferPrefill,
+  transferRoute,
+  transferTotals,
+  type Transfer,
+} from "../transfers";
+
+describe("card advance + hints", () => {
+  it("isCardAdvance = card → any other account", () => {
+    expect(isCardAdvance({ from: "card", to: "cash" })).toBe(true);
+    expect(isCardAdvance({ from: "card", to: "bank" })).toBe(true);
+    expect(isCardAdvance({ from: "bank", to: "card" })).toBe(false);
+    expect(isCardAdvance({ from: "bank", to: "upi" })).toBe(false);
+  });
+  it("transferHint picks the wording for the route", () => {
+    expect(transferHint({ from: "bank", to: "card" })).toBe(CARD_BILL_HINT);
+    expect(transferHint({ from: "card", to: "upi" })).toBe(CARD_ADVANCE_HINT);
+    expect(transferHint({ from: "bank", to: "cash" })).toBe(OWN_TRANSFER_HINT);
+    expect(CARD_BILL_HINT).toMatch(/reduces your available balance/);
+  });
+});
+
+describe("transferPrefill", () => {
+  const q = (s: string) => {
+    const p = new URLSearchParams(s);
+    return (k: string) => p.get(k);
+  };
+  it("reads the Pay bill link", () => {
+    expect(transferPrefill(q("from=bank&to=card&amount=1234.567"))).toEqual({ from: "bank", to: "card", amount: "1234.57" });
+  });
+  it("defaults to Bank → Cash with no amount", () => {
+    expect(transferPrefill(q(""))).toEqual({ from: "bank", to: "cash", amount: "" });
+    expect(transferPrefill(q("from=x&to=y&amount=-5"))).toEqual({ from: "bank", to: "cash", amount: "" });
+    expect(transferPrefill(q("amount=abc"))).toEqual({ from: "bank", to: "cash", amount: "" });
+  });
+  it("never returns the same account twice", () => {
+    expect(transferPrefill(q("from=card&to=card"))).toEqual({ from: "bank", to: "cash", amount: "" });
+    expect(transferPrefill(q("from=cash"))).toEqual({ from: "cash", to: "bank", amount: "" });
+  });
+});
 
 const tr = (id: string, date: string, over: Partial<Transfer> = {}): Transfer => ({
   id,

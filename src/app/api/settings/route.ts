@@ -1,20 +1,11 @@
 import { NextResponse } from "next/server";
 import { connectDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { MAX_AMOUNT, dbErrorResponse, fail, ok, readJsonObject, requireDb, toPaise } from "@/lib/api";
+import { dbErrorResponse, fail, ok, readJsonObject, requireDb } from "@/lib/api";
+import { parseBalanceInput, toSettingsDto, type SettingsLean } from "@/lib/settingsInput";
 import { SettingsModel } from "@/models/Settings";
 
 export const dynamic = "force-dynamic";
-
-
-type Lean = { openingBalance?: number | null; balanceAsOf?: Date | null; updatedAt?: Date };
-
-const toDto = (d: Lean | null) => {
-  const openingBalance = d?.openingBalance ?? null;
-  // Older docs have no balanceAsOf: the balance was entered when the doc was last saved.
-  const asOf = openingBalance === null ? null : (d?.balanceAsOf ?? d?.updatedAt ?? null);
-  return { openingBalance, balanceAsOf: asOf ? new Date(asOf).toISOString() : null };
-};
 
 /** Now, truncated to the minute, so a transaction picked for the same minute counts (≥ rule). */
 function nowToMinute() {
@@ -30,16 +21,17 @@ export async function GET() {
   if (user instanceof NextResponse) return user;
   try {
     await connectDb();
-    const doc = await SettingsModel.findOne({ key: user.userId }).lean<Lean>();
-    return ok(toDto(doc));
+    const doc = await SettingsModel.findOne({ key: user.userId }).lean<SettingsLean>();
+    return ok(toSettingsDto(doc));
   } catch (err) {
     return dbErrorResponse(err, "GET /api/settings", "Failed to load settings.");
   }
 }
 
 /**
- * PUT { openingBalance: number >= 0 | null }
- * Saving a balance re-anchors it to "now": only transactions dated at/after this minute affect it.
+ * PUT { openingBalance: number >= 0 | null, cardDueAtAnchor?: number >= 0 }
+ * Saving a balance re-anchors it (and the unpaid card amount, default 0) to "now": only transactions dated
+ * at/after this minute affect them. Card setup is saved separately via PUT /api/settings/card.
  */
 export async function PUT(req: Request) {
   const noDb = requireDb();
@@ -48,28 +40,18 @@ export async function PUT(req: Request) {
   if (user instanceof NextResponse) return user;
   const body = await readJsonObject(req);
   if (body instanceof NextResponse) return body;
-  if (!("openingBalance" in body)) return fail(400, "openingBalance is required.");
-
-  const raw = body.openingBalance;
-  const openingBalance = raw === null ? null : Number(raw);
-  if (openingBalance !== null) {
-    if (!Number.isFinite(openingBalance) || openingBalance < 0) return fail(400, "Opening balance must be 0 or more.");
-    if (openingBalance > MAX_AMOUNT) return fail(400, "Opening balance is too large.");
-  }
+  const parsed = parseBalanceInput(body);
+  if (!parsed.ok) return fail(400, parsed.error);
+  const { openingBalance, cardDueAtAnchor } = parsed.value;
 
   try {
     await connectDb();
     const doc = await SettingsModel.findOneAndUpdate(
       { key: user.userId },
-      {
-        $set: {
-          openingBalance: openingBalance === null ? null : toPaise(openingBalance),
-          balanceAsOf: openingBalance === null ? null : nowToMinute(),
-        },
-      },
+      { $set: { openingBalance, cardDueAtAnchor, balanceAsOf: openingBalance === null ? null : nowToMinute() } },
       { upsert: true, new: true, runValidators: true },
-    ).lean<Lean>();
-    return ok(toDto(doc));
+    ).lean<SettingsLean>();
+    return ok(toSettingsDto(doc));
   } catch (err) {
     return dbErrorResponse(err, "PUT /api/settings", "Failed to save settings.");
   }

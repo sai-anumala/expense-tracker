@@ -35,7 +35,7 @@ const longDate = (d: Date | string) =>
 export default function LoanDetail() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const { loans, removeLoan, addPayment, removePayment, transactions, settings } = useAppData();
+  const { loans, removeLoan, addPayment, removePayment, transactions, transfers, settings } = useAppData();
   const loan = loans.find((l) => l.id === id);
 
   const [amount, setAmount] = useState("");
@@ -70,7 +70,7 @@ export default function LoanDetail() {
   const settlesIt = value > 0 && Math.abs(value - s.outstanding) < 0.005;
   const accountOptions = paymentMethods.includes(account) ? paymentMethods : [account, ...paymentMethods];
   // Repaying money you borrowed reduces your balance: warn (non-blocking) if it's more than you have.
-  const short = !lent ? shortfall(availableBalance(transactions, loans, settings), value, when, settings.balanceAsOf) : null;
+  const short = !lent ? shortfall(availableBalance(transactions, transfers, loans, settings), value, when, settings.balanceAsOf) : null;
 
   function onRecord() {
     setError(null);

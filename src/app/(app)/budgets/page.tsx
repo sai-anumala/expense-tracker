@@ -24,7 +24,7 @@ function status(ratio: number) {
 }
 
 export default function Budgets() {
-  const { transactions, budget, saveBudget, loans, settings } = useAppData();
+  const { transactions, transfers, budget, saveBudget, loans, settings } = useAppData();
   const [editingLimit, setEditingLimit] = useState(false);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,7 +39,7 @@ export default function Budgets() {
   const remaining = limit - spent;
   const daysLeft = daysLeftInMonth();
   // Informational checks (never block saving).
-  const available = availableBalance(transactions, loans, settings);
+  const available = availableBalance(transactions, transfers, loans, settings);
   const budgetAboveBalance = limit > 0 && available !== null && limit > available;
   const categoryTotal = budget.categories.reduce((s, c) => s + c.limit, 0);
   const categoriesAboveLimit = limit > 0 && categoryTotal > limit;

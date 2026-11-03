@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { availableBalance, shortfall } from "../balance";
 import type { Settings } from "../data";
+import type { Transfer } from "../transfers";
 import { iso, loan, local, payment, tx } from "./fixtures";
 
 const asOf = iso(2026, 11, 1, 9);
@@ -14,29 +15,45 @@ describe("availableBalance", () => {
   const borrowed = loan({ id: "borrowed", direction: "borrowed", amount: 500, date: iso(2026, 11, 2) });
 
   it("null when no balance has been entered", () => {
-    expect(availableBalance([coffee], [], { openingBalance: null, balanceAsOf: null, cardDueAtAnchor: null, card: null })).toBeNull();
-    expect(availableBalance([coffee], [], { openingBalance: 100, balanceAsOf: null, cardDueAtAnchor: null, card: null })).toBeNull();
+    expect(availableBalance([coffee], [], [], { openingBalance: null, balanceAsOf: null, cardDueAtAnchor: null, card: null })).toBeNull();
+    expect(availableBalance([coffee], [], [], { openingBalance: 100, balanceAsOf: null, cardDueAtAnchor: null, card: null })).toBeNull();
   });
 
   it("entered + transactions + loan cash since the anchor", () => {
     // 10000 − 200 + 3000 − 1000 + 400 + 500
-    expect(availableBalance([before, coffee, salary], [lent, borrowed], settings)).toBe(12_700);
+    expect(availableBalance([before, coffee, salary], [], [lent, borrowed], settings)).toBe(12_700);
   });
 
   it("anchor in an earlier month still counts everything after it (monthStart is irrelevant)", () => {
-    expect(availableBalance([coffee], [], { openingBalance: 1000, balanceAsOf: iso(2026, 1, 1), cardDueAtAnchor: null, card: null })).toBe(800);
+    expect(availableBalance([coffee], [], [], { openingBalance: 1000, balanceAsOf: iso(2026, 1, 1), cardDueAtAnchor: null, card: null })).toBe(800);
   });
 
   it("excludes the transaction being edited", () => {
-    expect(availableBalance([coffee, salary], [], settings, { transactionId: "coffee" })).toBe(13_000);
+    expect(availableBalance([coffee, salary], [], [], settings, { transactionId: "coffee" })).toBe(13_000);
   });
 
   it("excludes the loan being edited, including its repayments", () => {
-    expect(availableBalance([], [lent, borrowed], settings, { loanId: "lent" })).toBe(10_500);
+    expect(availableBalance([], [], [lent, borrowed], settings, { loanId: "lent" })).toBe(10_500);
   });
 
   it("an unknown exclude id changes nothing", () => {
-    expect(availableBalance([coffee], [lent], settings, { transactionId: "nope", loanId: "nope" })).toBe(9_200);
+    expect(availableBalance([coffee], [], [lent], settings, { transactionId: "nope", loanId: "nope" })).toBe(9_200);
+  });
+
+  const cardBuy = tx(-4000, iso(2026, 11, 2), { id: "cardBuy", account: "Credit Card" });
+  const billPaid: Transfer = { id: "bill", from: "bank", to: "card", amount: 2500, date: iso(2026, 11, 3) };
+  const atm: Transfer = { id: "atm", from: "bank", to: "cash", amount: 1000, date: iso(2026, 11, 3) };
+
+  it("a credit card purchase does not reduce the available balance", () => {
+    expect(availableBalance([coffee, cardBuy], [], [], settings)).toBe(9_800);
+  });
+
+  it("paying the card bill reduces it; bank → cash is neutral", () => {
+    expect(availableBalance([cardBuy], [billPaid, atm], [], settings)).toBe(7_500);
+  });
+
+  it("excludes the transfer being edited", () => {
+    expect(availableBalance([], [billPaid, atm], [], settings, { transferId: "bill" })).toBe(10_000);
   });
 });
 

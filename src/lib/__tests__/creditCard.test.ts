@@ -1,6 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { anchoredBalance } from "../insights";
-import { availableCashEvents, cardDueEvents, cardSummary, dueDateFor, lastStatementEnd, type CardSettings } from "../creditCard";
+import {
+  availableCashEvents,
+  cardDueEvents,
+  cardDuesLine,
+  cardSummary,
+  currentCardDue,
+  dueDateFor,
+  expenseCashOutflow,
+  lastStatementEnd,
+  needsCardDuePrompt,
+  transferCashEffect,
+  type CardSettings,
+} from "../creditCard";
 import type { Transfer } from "../transfers";
 import { iso, local, tx } from "./fixtures";
 
@@ -102,5 +114,65 @@ describe("card summary (statement 15th, due 5th)", () => {
     const s = cardSummary(txs, [], { statementDay: 15, dueDay: 5 }, { balanceAsOf: null }, local(2026, 11, 3));
     expect(s.utilization).toBeNull();
     expect(s.due).toBe(3450);
+  });
+});
+
+describe("cardDuesLine (Overview 'After card dues')", () => {
+  const settings = { balanceAsOf: anchorIso, cardDueAtAnchor: 0 };
+  const txs = [card(-2000, iso(2026, 10, 10)), card(-1000, iso(2026, 10, 12)), card(-450, iso(2026, 10, 28))];
+  const now = local(2026, 11, 3, 12);
+
+  it("hidden without a balance or card summary, or when nothing is owed", () => {
+    const s = cardSummary(txs, [], CARD, settings, now);
+    expect(cardDuesLine(null, s)).toBeNull();
+    expect(cardDuesLine(5000, null)).toBeNull();
+    expect(cardDuesLine(5000, cardSummary([], [], CARD, settings, now))).toBeNull();
+  });
+  it("after = available − due, with bill / unbilled breakdown", () => {
+    const line = cardDuesLine(10000, cardSummary(txs, [], CARD, settings, now));
+    expect(line).toEqual({
+      kind: "after",
+      after: 6550,
+      short: false,
+      bill: 3000,
+      dueDate: new Date(2026, 10, 5, 23, 59, 59, 999),
+      unbilled: 450,
+    });
+  });
+  it("short when dues exceed the cash", () => {
+    expect(cardDuesLine(1000.1, cardSummary(txs, [], CARD, settings, now))).toMatchObject({ kind: "after", after: -2449.9, short: true });
+  });
+  it("overpaid card → credit line instead", () => {
+    const s = cardSummary(txs, [transfer("bank", "card", 4000, iso(2026, 11, 1))], CARD, settings, now);
+    expect(cardDuesLine(10000, s)).toEqual({ kind: "credit", credit: 550 });
+  });
+});
+
+describe("small card helpers", () => {
+  it("transferCashEffect: bill −, withdrawal +, others 0", () => {
+    expect(transferCashEffect({ from: "upi", to: "card", amount: 500 })).toBe(-500);
+    expect(transferCashEffect({ from: "card", to: "cash", amount: 300 })).toBe(300);
+    expect(transferCashEffect({ from: "bank", to: "cash", amount: 100 })).toBe(0);
+  });
+  it("expenseCashOutflow: card purchases take no cash", () => {
+    expect(expenseCashOutflow(800, "Credit Card")).toBe(0);
+    expect(expenseCashOutflow(800, "UPI")).toBe(800);
+    expect(expenseCashOutflow(800, undefined)).toBe(800);
+  });
+  it("currentCardDue = entered unpaid amount + card events since the anchor", () => {
+    const s = { balanceAsOf: iso(2026, 11, 1, 9), cardDueAtAnchor: 1200 };
+    const txs = [card(-999, iso(2026, 10, 30)), card(-300, iso(2026, 11, 2)), card(50, iso(2026, 11, 2))];
+    expect(currentCardDue(txs, [transfer("bank", "card", 1000, iso(2026, 11, 3))], s)).toBe(450);
+    expect(currentCardDue(txs, [], { balanceAsOf: null })).toBe(1249);
+  });
+  it("needsCardDuePrompt only for a legacy balance (cardDueAtAnchor null) with card activity since it", () => {
+    const base = { openingBalance: 5000, balanceAsOf: iso(2026, 11, 1, 9), cardDueAtAnchor: null };
+    const after = [card(-100, iso(2026, 11, 2))];
+    expect(needsCardDuePrompt(after, [], base)).toBe(true);
+    expect(needsCardDuePrompt([card(-100, iso(2026, 10, 2))], [], base)).toBe(false); // before the anchor
+    expect(needsCardDuePrompt([upi(-100, iso(2026, 11, 2))], [], base)).toBe(false);
+    expect(needsCardDuePrompt([], [transfer("bank", "card", 10, iso(2026, 11, 2))], base)).toBe(true);
+    expect(needsCardDuePrompt(after, [], { ...base, cardDueAtAnchor: 0 })).toBe(false);
+    expect(needsCardDuePrompt(after, [], { ...base, openingBalance: null })).toBe(false);
   });
 });
