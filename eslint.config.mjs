@@ -18,6 +18,7 @@ const eslintConfig = [
       "out/**",
       "build/**",
       "next-env.d.ts",
+      ".claude/**", // sub-agent git worktrees (each has its own node_modules/.next)
     ],
   },
 ];

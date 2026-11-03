@@ -350,6 +350,7 @@ Validation lives in `lib/transactionInput.ts` (transactions), `lib/authInput.ts`
   - Blocked → **429** `"Too many … Try again in N minutes."` with `Retry-After` (seconds). `AuthForm` and the change-password dialog show the server message inline.
   - Keys are **SHA-256 hashes** (`node:crypto`) of `<kind>:<value>`: no raw emails or IPs are stored. Client IP = first `x-forwarded-for` entry (Vercel sets it), else `x-real-ip`, else `"unknown"`.
   - **Fails open:** if the rate-limit step itself errors it logs `rateLimit.* failed` and allows the request; DB errors in the main operation keep the normal `dbErrorResponse` handling.
+  - **Known trade-off:** anyone who knows an email can trigger 5 failed logins and lock that email out for up to 15 minutes (no data exposed; clears itself). Standard for per-account limits.
   - Atomic: one `findOneAndUpdate` upsert with an aggregation pipeline ("reset if expired, else +1"); a duplicate-key race on first insert is retried once.
 - **Change password:** `POST /api/auth/password` (session required; not in `PUBLIC_API`). Verifies the current password with bcrypt, validates the new one with `validatePassword` (8–72), rejects new = current, saves a new bcrypt hash (cost 12). The current session stays valid; **other devices stay signed in** until their cookie expires (stateless JWTs, see §19).
 
@@ -493,6 +494,8 @@ Also bump "Last updated" at the top. Keep entries factual and short; link to fil
 
 ## 16. Testing & verification
 
+**Parallel work with sub-agents:** independent tasks can run in separate git worktrees (`.claude/worktrees/<agent>`, branches `worktree-agent-…`) created from `develop`. The coordinating session reviews each branch, re-runs tsc/lint/build, merges into `develop`, then previews. Sub-agents never push or touch `main`, and test only against a temporary local MongoDB.
+
 No automated test suite yet. Verify manually:
 
 ```bash
@@ -529,6 +532,7 @@ For isolated tests use a **temporary local MongoDB** (`mongod --dbpath <tmp> --p
 | `ENOSPC` during npm install | Disk full; `npm cache clean --force` (freed 12 GB once) |
 | Budget/settings duplicate-key error | `key` must be the owner's userId; never upsert with a shared constant |
 | A user sees no data after signup | Expected: new accounts start empty; legacy ownerless data is hidden |
+| Thousands of lint/tsc errors from `.claude/worktrees/...` | Sub-agent worktrees live inside the repo. They are excluded in `eslint.config.mjs` (`.claude/**`), `tsconfig.json` (`exclude`) and `.gitignore` (`.claude/worktrees/`); keep those exclusions |
 | "Too many login attempts" while testing locally | Per-email/IP counters live in the `ratelimits` collection of the **shared** DB. Wait for `Retry-After`, or (local/temporary DB only) delete the doc; keys are hashes, so `db.ratelimits.deleteMany({})` on a scratch DB. Without a proxy, local requests all share IP `unknown` unless `x-forwarded-for` is sent |
 | A transaction doesn't change the Total Available Balance | Its date is earlier than when the balance was entered (`balanceAsOf`); by design. Re-enter the balance via ✎ if needed |
 
