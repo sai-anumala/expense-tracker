@@ -40,8 +40,12 @@ export const slug = (s: string) =>
   s
     .toLowerCase()
     .normalize("NFKD")
-    .replace(/[^\p{L}\p{N}]+/gu, "-")
+    // Drop accents on Latin letters ("Ñuñez" → "nunez") but keep combining marks in other scripts,
+    // where they're part of the word (Devanagari vowel signs: "रवि" stays "रवि").
+    .replace(/(\p{Script=Latin})\p{M}+/gu, "$1")
+    .replace(/[^\p{L}\p{N}\p{M}]+/gu, "-")
     .replace(/^-+|-+$/g, "")
+    .normalize("NFC")
     .slice(0, 40) || "export";
 
 export const todayStamp = () => {

@@ -57,8 +57,7 @@ There is **no mock or sample data** anywhere: every number comes from the signed
 | Auth | Custom: **bcryptjs** (cost 12) + **jose** JWT (HS256) in httpOnly cookie | No third-party auth provider |
 | Hosting | **Vercel** (Hobby), GitHub integration | |
 | Package manager | npm (`package-lock.json`) | |
-
-No test framework is configured yet (see [§16](#16-testing--verification)).
+| Tests | **Vitest 4.1.12** (pinned exactly), node environment | Unit tests for pure `src/lib` logic only; no UI/E2E tests yet (see [§16](#16-testing--verification)) |
 
 ---
 
@@ -78,6 +77,7 @@ npm run dev                     # http://localhost:3000 → redirects to /login
 | Production build | `npm run build` then `npm run start` |
 | Lint | `npm run lint` |
 | Type-check | `npx tsc --noEmit` |
+| Unit tests | `npm test` (single run) · `npm run test:watch` |
 | DB/auth health | `GET /api/health` → `{ success, db, auth }` |
 
 ---
@@ -218,6 +218,8 @@ src/
 │  ├─ loans.ts                   (shared) Loan types, loanStatus, nextPaymentDate, loanCashEvents, loanTotals, source labels
 │  └─ loanInput.ts   (server)    parseLoanInput, parsePaymentInput, toLoanDto
 └─ models/  User.ts · Transaction.ts · Budget.ts · Settings.ts · Loan.ts · RateLimit.ts
+src/lib/__tests__/  Vitest unit tests (<module>.test.ts) + fixtures.ts builders (see §16)
+test/        Vitest setup.ts (TZ, no DB) and server-only-stub.ts · vitest.config.mts at the repo root
 design/      Stitch screenshots (dashboard/add/budget/analytics.png) + DESIGN.md (design system spec)
 README.md    Short human-facing overview (keep consistent with this file)
 CLAUDE.md    Imports this file for Claude Code
@@ -474,7 +476,7 @@ Tokens are defined in `src/app/globals.css` under `@theme` and used as Tailwind 
 7. Categories (`categories`, `primaryCategories`, `moreCategories`, `pickableCategories`), payment methods and `DEFAULT_PAYMENT_METHOD` are defined once in `lib/data.ts`. Keep `CATEGORY_IDS` in `models/Transaction.ts` in sync. Adding a category = add it to `CategoryId`, `categories` (label, long name, icon, tone, chart color), one of the two lists, and `CATEGORY_IDS`.
 8. Keep `MAX_AMOUNT` (1e10) in sync: `lib/api.ts`, `components/AmountForm.tsx`, `app/(app)/add/page.tsx`.
 9. Client pages use `useAppData()`; don't fetch directly from pages.
-10. Before pushing: `npx tsc --noEmit`, `npm run lint`, and a production build (see [§16](#16-testing--verification)).
+10. Before pushing: `npx tsc --noEmit`, `npm run lint`, `npm test`, and a production build (see [§16](#16-testing--verification)).
 11. Commits end with a `Co-Authored-By:` trailer when made by an AI agent. Work on `develop`; only merge to `main` to release.
 12. Pin new dependency versions; check `npm audit --omit=dev` after upgrades.
 
@@ -496,10 +498,18 @@ Also bump "Last updated" at the top. Keep entries factual and short; link to fil
 
 **Parallel work with sub-agents:** independent tasks can run in separate git worktrees (`.claude/worktrees/<agent>`, branches `worktree-agent-…`) created from `develop`. The coordinating session reviews each branch, re-runs tsc/lint/build, merges into `develop`, then previews. Sub-agents never push or touch `main`, and test only against a temporary local MongoDB.
 
-No automated test suite yet. Verify manually:
+### Unit tests (Vitest)
+- Run: `npm test` (single run, as in CI) or `npm run test:watch`. Takes about a second; no network, no database.
+- Location: `src/lib/__tests__/<module>.test.ts` (one file per module in `src/lib`). Shared builders (`tx`, `loan`, `payment`, `local`, `iso`) live in `src/lib/__tests__/fixtures.ts`.
+- Covered: `insights` (period bounds, totals, `anchoredBalance`), `loans`, `balance`, `csv`, `loanExport`, and the server validators `transactionInput`, `loanInput`, `authInput`. Not covered: React components, API routes, Mongoose models.
+- Config: `vitest.config.mts`: `@/*` → `src/*` alias, `environment: "node"`, `server-only` aliased to the empty `test/server-only-stub.ts` (so server validators import cleanly). `test/setup.ts` deletes `MONGODB_URI` and restores real timers after each test.
+- **Time zone is pinned to `Asia/Kolkata`** (set in the config and the setup file), so local-date maths gives the same results on any machine. Use `local()`/`iso()` from fixtures for dates and `vi.useFakeTimers()` + `vi.setSystemTime()` wherever "now" matters.
+- Convention: a known bug can be pinned with `it.fails` (listed in §19); when it's fixed the test starts failing, so switch it to `it`. (The first one, `slug()` splitting Devanagari/accented names, was fixed on 2026-11-03.)
+
+### Manual checks
 
 ```bash
-npx tsc --noEmit && npm run lint
+npx tsc --noEmit && npm run lint && npm test
 # Production build WITHOUT disturbing a running `npm run dev` (they share .next):
 T=$(mktemp -d) && git ls-files -co --exclude-standard | grep -v '^\.env' | tar -cf - -T - | tar -xf - -C $T \
   && ln -s "$PWD/node_modules" $T/node_modules && (cd $T && npx next build) ; rm -rf $T
@@ -567,6 +577,7 @@ For isolated tests use a **temporary local MongoDB** (`mongod --dbpath <tmp> --p
 | 2026-11-02 | "Sending home" stays an **expense** | User decision: regular planned monthly outflow, budgetable |
 | 2026-11-03 | Auth rate limiting stored in MongoDB (`ratelimits`, TTL index, hashed keys, fail open) + Change password (`POST /api/auth/password`, account-menu dialog) | User request. Vercel serverless has no shared memory; no new dependency or provider (Redis) needed. Fail open so a counter problem never locks users out |
 | 2026-10-31 | Upgraded Next 15.5.28 / React 19.1.10 / Mongoose 8.24.x | Security advisories; Vercel deploy block |
+| 2026-11-03 | Vitest unit tests for pure business logic (`src/lib/__tests__`), TZ pinned to Asia/Kolkata, `server-only` stubbed. Chose the mature 4.1.x line (4.1.12) over the newer 5.x | Lock in §11 formulas and server validation without touching the DB; no app behaviour changed |
 
 ---
 
@@ -575,7 +586,7 @@ For isolated tests use a **temporary local MongoDB** (`mongod --dbpath <tmp> --p
 - No password reset by email (needs an email provider) and no email verification.
 - Sessions are stateless JWTs: changing the password does **not** sign out other devices (they stay signed in until their 30-day cookie expires). Fix would need a per-user `tokenVersion`/`passwordChangedAt` checked on each request.
 - Rate limits are fixed windows per IP/email; many users behind one NAT share the per-IP budget (20 logins / 15 min, 10 sign-ups / hour).
-- No automated tests (consider Vitest for `lib/insights.ts` and Playwright for flows).
+- No UI or end-to-end tests yet (unit tests cover `src/lib` only; consider Playwright for flows). API routes (incl. rate limiting) are verified manually against a temporary MongoDB, not by automated tests.
 - Notification bell and month picker are non-functional placeholders.
 - Receipts: only the file name is stored; no upload or storage.
 - Remaining `npm audit` item: PostCSS inside Next (build-time only; fixed only in Next 16).

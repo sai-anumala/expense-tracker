@@ -80,4 +80,4 @@ git checkout develop
 
 ## Scripts
 
-`npm run dev` · `npm run build` · `npm run start` · `npm run lint`
+`npm run dev` · `npm run build` · `npm run start` · `npm run lint` · `npm test`
