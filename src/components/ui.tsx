@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { UserMenu } from "./UserMenu";
-import { Bell, CalendarDays, ChevronDown, Wallet, type LucideIcon } from "lucide-react";
+import { NotificationBell } from "./NotificationBell";
+import { OverviewAlertBanner } from "./AlertBanner";
+import { CalendarDays, ChevronDown, Wallet, type LucideIcon } from "lucide-react";
 import type { Tone } from "@/lib/data";
 
 const toneClasses: Record<Tone | "secondary", string> = {
@@ -41,21 +43,23 @@ export function Logo() {
 
 export function AppHeader({ subtitle }: { subtitle: string }) {
   return (
-    <header className="sticky top-0 z-20 flex items-center justify-between bg-surface-container-lowest/90 px-5 py-4 backdrop-blur">
-      <Link href="/" className="flex items-center gap-3">
-        <Logo />
-        <span className="leading-tight">
-          <span className="block text-xl font-semibold tracking-tight">Ledgerly</span>
-          <span className="block text-sm text-on-surface-variant">{subtitle}</span>
-        </span>
-      </Link>
-      <div className="flex items-center gap-4">
-        <button aria-label="Notifications" className="rounded-full p-2 hover:bg-surface-container">
-          <Bell className="size-5" />
-        </button>
-        <UserMenu />
-      </div>
-    </header>
+    <>
+      <header className="sticky top-0 z-20 flex items-center justify-between bg-surface-container-lowest/90 px-5 py-4 backdrop-blur">
+        <Link href="/" className="flex items-center gap-3">
+          <Logo />
+          <span className="leading-tight">
+            <span className="block text-xl font-semibold tracking-tight">Ledgerly</span>
+            <span className="block text-sm text-on-surface-variant">{subtitle}</span>
+          </span>
+        </Link>
+        <div className="flex items-center gap-4">
+          <NotificationBell />
+          <UserMenu />
+        </div>
+      </header>
+      {/* Most important reminder; renders only on Overview ("/"). */}
+      <OverviewAlertBanner />
+    </>
   );
 }
 

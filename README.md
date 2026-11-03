@@ -14,6 +14,7 @@ A mobile-first expense tracker built with **Next.js 15 (App Router)**, **Tailwin
 - **Loans** — track money lent to / borrowed from friends, relatives, apps and banks; partial or full repayments, optional interest, due date and monthly plan (affects balance, never income or spending)
 - **Transfers** — move money between your own Bank, UPI, Cash and Credit Card (ATM withdrawals, card bill payments); shown in history, never changes the balance and never counts as income or spending
 - **Accounts** — totals per payment method and full history (transactions and transfers)
+- **Reminders** — the 🔔 bell lists card bills due soon / overdue, high card usage, upcoming or overdue loan payments and budgets ≥ 90% used; the most important one also shows as a dismissible banner on the Overview (in-app only)
 - Amounts in **INR (₹)** with Indian digit grouping
 
 ## Getting started

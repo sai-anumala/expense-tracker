@@ -191,7 +191,9 @@ src/
 │     ├─ loans/route.ts · loans/[id] · loans/[id]/payments · loans/[id]/payments/[paymentId]
 │     └─ transfers/route.ts      GET list, POST create · transfers/[id]/route.ts PUT update, DELETE
 ├─ components/
-│  ├─ ui.tsx                     AppHeader (logo, bell [no-op], UserMenu), Logo, IconTile, MonthPill [no-op], ProgressBar, SectionTitle
+│  ├─ ui.tsx                     AppHeader (logo, NotificationBell, UserMenu; + OverviewAlertBanner below the header on "/"), Logo, IconTile, MonthPill [no-op], ProgressBar, SectionTitle
+│  ├─ NotificationBell.tsx       🔔 with urgent+warning count badge → reminders panel (outside click / Esc closes); useAlerts(), alertIcons, severityTile
+│  ├─ AlertBanner.tsx            Slim dismissible banner with the top urgent/warning reminder; OverviewAlertBanner shows it only on "/"
 │  ├─ BottomNav.tsx              Fixed bottom nav (Overview, Analytics, [+], Budgets, Loans); TabPage wrapper
 │  ├─ SwipeActions.tsx           Generic swipe-left row (drag/tap/Enter reveals action buttons; one open app-wide)
 │  ├─ TransactionRow.tsx         Transaction row on SwipeActions (View · Edit · Delete), details pop-up, delete confirm; EmptyState
@@ -208,6 +210,7 @@ src/
 │  ├─ store.tsx      (client)    TransactionsProvider, useAppData, api() fetch helper, ApiError, errorMessage()
 │  ├─ data.ts                    Categories (+ primaryCategories / moreCategories), paymentMethods + DEFAULT_PAYMENT_METHOD, types, empty defaults
 │  ├─ insights.ts                Pure calc helpers: periodBounds, within, totals, spentByCategory, topMerchants, weeklySpend, categoryInsight, anchoredBalance
+│  ├─ alerts.ts                  (pure) buildAlerts → sorted reminders (card bill/usage, loans, budgets); thresholds as constants; isAttention
 │  ├─ format.ts                  money (₹, en-IN), moneyWhole, signedMoney, timeOf, monthLabel, daysLeftInMonth, plural, dayBucket
 │  ├─ db.ts          (server)    connectDb() with global cached connection; isDbConfigured()
 │  ├─ api.ts         (server)    ok/fail, requireDb, readJsonObject, dbErrorResponse, MAX_AMOUNT, toPaise
@@ -411,7 +414,22 @@ A credit card is money you **owe**, not money you have. Core maths is implemente
 - **Card due** (`cardDueEvents`): purchase +|amount|, refund/credit on the card (income with account Credit Card) −amount, bill payment −amount, cash withdrawal +amount. Starts at `settings.cardDueAtAnchor` (unpaid card amount entered with the balance) at `balanceAsOf`; events before the anchor are ignored.
 - **Statement cycle** (`settings.card = { statementDay 1–28, dueDay 1–28, limit? }`): the statement closes at the end of `statementDay`; due date = `dueDay` of the same month if `dueDay > statementDay`, else of the next month (`dueDateFor`). `cardSummary()` returns `due`, `billed`, `billOutstanding` (billed − payments since the statement), `unbilled` (rest of due), `credit` (overpaid), `dueDate`, `daysToDue`, `overdue`, `utilization` (due/limit), `unbilledEvents`, `billedEvents`. If the anchor is after the last statement, the entered unpaid amount counts as the current bill until the next statement.
 - **Low-balance warnings:** card purchases never warn (they don't touch cash); a card bill payment warns if it exceeds the available balance.
-- **Reminders (bell):** card bill due within 5 days / overdue, card utilization ≥ 80%, loan next payment within 3 days / overdue, budget ≥ 90% (monthly or category). In-app only.
+- **Reminders (bell):** card bill due within 5 days / overdue, card utilization ≥ 80%, loan next payment within 3 days / overdue, budget ≥ 90% (monthly or category). In-app only. Implemented in `lib/alerts.ts`, see "Reminders" below.
+
+### Reminders (`lib/alerts.ts` `buildAlerts`; bell + Overview banner)
+Computed client-side from loaded data at render time; nothing stored (no read/unread). Amounts via `money()`; dates "5 Nov"; "today"/"tomorrow" wording.
+
+| Rule | Severity · title | id · link |
+|---|---|---|
+| Card set up (`settings.card`; null/missing = no card alerts), `cardSummary` `billOutstanding > 0` and `overdue` | urgent · "Card bill ₹X overdue" | `card:bill` · `/card` |
+| else `billOutstanding > 0` and `daysToDue ≤ 5` | warning · "Card bill ₹X due in N days / tomorrow / today" | `card:bill` · `/card` |
+| Card `limit` set and `utilization ≥ 0.8` | warning · "Card usage NN% of limit" (NN floored) | `card:utilization` · `/card` |
+| Open loan, `loanStatus().overdue` | urgent · "Loan to/from <person> overdue" (lent = to) | `loan:<id>:overdue` · `/loans/<id>` |
+| Open, not overdue loan, monthly plan, next payment in 0–3 days | warning · "Pay ₹X to <person> …" (borrowed) / "Collect ₹X from <person> …" (lent); X = `min(monthlyPayment, outstanding)` | `loan:<id>:next` |
+| Monthly budget set, spent this month / limit ≥ 0.9 | warning · "Monthly budget NN% used" (NN floored); ≥ 1 → urgent "Over monthly budget by ₹X" ("Monthly budget fully used" at exactly 100%) | `budget:month` · `/budgets` |
+| Same per category budget (long name) | "Food & Dining budget NN% used" / "Over Food & Dining budget by ₹X" | `budget:cat:<id>` · `/budgets` |
+
+Settled loans never alert; an overdue loan shows only its overdue alert. **Order:** urgent → warning → info, then the relevant date (card due date, loan due/next date, card next statement, end of month for budgets; earliest first), then card → loans → budgets. Badge = count of urgent + warning.
 
 ### Low-balance warnings (`lib/balance.ts`, `components/BalanceNotice.tsx`)
 - **Never block saving**; amber "warn" or neutral "info" notice only.
@@ -472,7 +490,9 @@ A credit card is money you **owe**, not money you have. Core maths is implemente
 - **Loans tab** (`/loans`): summary cards, **I lent money** / **I borrowed** buttons → `/loans/new?dir=…`, Open/Settled tabs, **Download all loans (CSV)** at the end, cards with progress bar, Overdue badge, next payment and repay-by date. Tap → detail.
 - **Loan form** (`/loans/new`, `?id=` to edit): I lent / I borrowed tabs, big amount, optional **Total to repay** (interest/fees), name, source chips (Friend, Relative, Online app, Bank, Other), date (DateTimePicker), payment method (default UPI), optional **Repay by** (native date input), optional **Monthly repayment plan** (amount + day 1–28), note. Edit → confirm dialog.
 - **Loan detail** (`/loans/[id]`): outstanding (hero), progress, details (dates, plan, next payment, note); **Record repayment** with **Settle in full · ₹X** and **Monthly · ₹Y** quick-fill chips, date, method, note → confirm ("Record & settle loan" when it clears the balance); repayment history with remove (confirm); **Download <person>'s statement (CSV)** (covers every loan with that person; a hint shows how many others are included); Edit loan; Delete loan (danger confirm).
-- **Header:** logo + subtitle, bell (no-op), UserMenu (initials → name/email, **Change password**, Log out).
+- **Header:** logo + subtitle, **NotificationBell**, UserMenu (initials → name/email, **Change password**, Log out).
+- **Bell:** red badge (amber when nothing is urgent) with the number of urgent + warning reminders (`aria-label` "Notifications, N new"; "9+" over 9). Tap opens a "Reminders" panel (closes on outside click, Esc, or following a link) listing every reminder with icon, title, body and severity colour (urgent = secondary/red, warning = tertiary/amber, info = neutral); each row links to its screen. Empty: "You're all caught up ✓". Rules in §11 "Reminders".
+- **Overview banner** (`AlertBanner`, rendered by `AppHeader` only when the path is `/`): the single most important urgent/warning reminder as a slim row under the header (tap → its screen, × dismisses). Dismissal is in memory for the browser tab only (module-level set by alert id: survives tab switches, cleared on reload; no localStorage); the next reminder then shows. motion-safe fade-in.
 - **Change password dialog** (`components/ChangePasswordDialog.tsx`, from the account menu): compact centered `<dialog>` (rounded-2xl, `w-[min(22rem,calc(100%-2rem))]`) with Current password, New password (show/hide toggle for all fields, "At least 8 characters" hint), Confirm new password. Client checks (required, length, match, different) then server errors inline (`role="alert"`); busy "Saving…"; success shows "Password changed" (motion-safe pop) and closes after ~1.8 s or on Done. Esc / backdrop / Cancel close it (not while busy). No extra confirm dialog: entering the current password is the confirmation.
 - **Bottom nav:** Overview, Analytics, [+ FAB → /add], Budgets, **Loans**. Accounts is reached via "View All" on Recent Transactions. Quick actions: Add Expense, Add Income, **Transfer** (→ `/transfer`), Lend / Borrow.
 - **Transfer** (`/transfer`, `/transfer?id=…` to edit): compact animated header (From-account icon → coins → To-account icon, dashed line; `motion-safe:`), **From** and **To** chip rows (Bank, UPI, Cash, Credit Card) with a swap button; the From account is disabled in the To row, and picking the current To as From swaps them. Card-bill hint (blue) when To = Credit Card. Big amount input (same style as Add Expense, `sanitizeAmount`), DateTimePicker, optional note (≤ 120). New → saves directly, shows a "Saved …" status and resets the form; Edit → "Save changes to this transfer?" confirm, then back to `/transfer`. Server errors inline (`role="alert"`). Unknown id → "Transfer not found". Below: "Your transfers" history (newest first) with "This month: N transfers · ₹X", rows via `TransferRow`; empty state. Not in the bottom nav (a 6th item would crowd small phones). All animations use `motion-safe:` (keyframes `ledgerly-travel/float/shimmer/fade-up/dash/pop/ring/progress/fade-in` in `globals.css`).
@@ -620,6 +640,7 @@ For isolated tests use a **temporary local MongoDB** (`mongod --dbpath <tmp> --p
 | 2026-10-31 | Upgraded Next 15.5.28 / React 19.1.10 / Mongoose 8.24.x | Security advisories; Vercel deploy block |
 | 2026-11-03 | Vitest unit tests for pure business logic (`src/lib/__tests__`), TZ pinned to Asia/Kolkata, `server-only` stubbed. Chose the mature 4.1.x line (4.1.12) over the newer 5.x | Lock in §11 formulas and server validation without touching the DB; no app behaviour changed |
 | 2026-11-03 | **Transfers** between own accounts replace the "Coming soon" page: simple one-total model (no per-account balances), fixed accounts Bank/UPI/Cash/Credit Card, credit card bill = transfer, shown in Recent Transactions / Accounts history, excluded from every total | User decisions (final). Card purchases are already expenses, so paying the bill must not count twice |
+| 2026-11-03 | **In-app reminders**: bell panel + Overview banner computed from loaded data (`lib/alerts.ts`); no persistence of read/unread or dismissals (badge = current urgent + warning count). Banner rendered from `AppHeader` on `/` so the Overview page needn't change | Agreed card spec; no DB/storage needed, nothing to go stale. Push/email out of scope |
 
 ---
 
@@ -629,12 +650,13 @@ For isolated tests use a **temporary local MongoDB** (`mongod --dbpath <tmp> --p
 - Sessions are stateless JWTs: changing the password does **not** sign out other devices (they stay signed in until their 30-day cookie expires). Fix would need a per-user `tokenVersion`/`passwordChangedAt` checked on each request.
 - Rate limits are fixed windows per IP/email; many users behind one NAT share the per-IP budget (20 logins / 15 min, 10 sign-ups / hour).
 - No UI or end-to-end tests yet (unit tests cover `src/lib` only; consider Playwright for flows). API routes (incl. rate limiting) are verified manually against a temporary MongoDB, not by automated tests.
-- Notification bell and month picker are non-functional placeholders.
+- Month picker is a non-functional placeholder.
+- Reminders are in-app only: no push/email notifications; read state and banner dismissals are not persisted.
 - Receipts: only the file name is stored; no upload or storage.
 - Remaining `npm audit` item: PostCSS inside Next (build-time only; fixed only in Next 16).
 - Transactions list capped at 1000 per user (no pagination).
 - Shared DB across preview/dev/prod (see §5).
 - No account deletion or profile edit UI.
 - No per-account balances (simple model): transfers are recorded but Bank/UPI/Cash/Card balances aren't tracked separately. Transfers list capped at 1000 per user.
-- Loans phase 2: interest rate and EMI schedule/amortisation, missed-instalment detection (today only past `dueDate` = Overdue), due-date reminders, link a repayment to a transaction.
+- Loans phase 2: interest rate and EMI schedule/amortisation, missed-instalment detection (today only past `dueDate` = Overdue; the bell reminds 3 days before a plan payment), link a repayment to a transaction.
 - Cleanup pending: test user `test.user@ledgerly-demo.dev`; legacy `settings` doc `key:"default"`.
