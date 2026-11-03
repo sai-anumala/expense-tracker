@@ -403,6 +403,16 @@ Examples: entered ₹10,000 at 4:30 PM → a ₹500 expense dated 2 PM is ignore
 
 Reference scenario (from the spec): budget 3,000, spent 1,830.40 → Remaining 1,169.60; 12 days left → 97.46/day.
 
+### Credit card (single card) — agreed spec 2026-11-03 (`lib/creditCard.ts`)
+A credit card is money you **owe**, not money you have. Core maths is implemented and unit-tested in `lib/creditCard.ts` (`src/lib/__tests__/creditCard.test.ts`); UI/API build on it.
+- **Available balance = Bank + UPI + Cash.** A transaction with `account === "Credit Card"` (`CARD_ACCOUNT`) does **not** change Total Available Balance. Use `availableCashEvents(transactions, transfers, loans)` as the input to `anchoredBalance`/`availableBalance` (replaces `[...transactions, ...loanCashEvents]`).
+- **Spending/budgets unchanged:** card purchases are still expenses, so they count in Spent, category budgets and analytics **in the month of purchase**.
+- **Card bill payment** = transfer Bank/UPI/Cash → Card: **reduces the available balance** and the card due; **never spending**. **Cash withdrawal** = transfer Card → Bank/UPI/Cash: adds cash, adds card due. Transfers among Bank/UPI/Cash stay neutral.
+- **Card due** (`cardDueEvents`): purchase +|amount|, refund/credit on the card (income with account Credit Card) −amount, bill payment −amount, cash withdrawal +amount. Starts at `settings.cardDueAtAnchor` (unpaid card amount entered with the balance) at `balanceAsOf`; events before the anchor are ignored.
+- **Statement cycle** (`settings.card = { statementDay 1–28, dueDay 1–28, limit? }`): the statement closes at the end of `statementDay`; due date = `dueDay` of the same month if `dueDay > statementDay`, else of the next month (`dueDateFor`). `cardSummary()` returns `due`, `billed`, `billOutstanding` (billed − payments since the statement), `unbilled` (rest of due), `credit` (overpaid), `dueDate`, `daysToDue`, `overdue`, `utilization` (due/limit), `unbilledEvents`, `billedEvents`. If the anchor is after the last statement, the entered unpaid amount counts as the current bill until the next statement.
+- **Low-balance warnings:** card purchases never warn (they don't touch cash); a card bill payment warns if it exceeds the available balance.
+- **Reminders (bell):** card bill due within 5 days / overdue, card utilization ≥ 80%, loan next payment within 3 days / overdue, budget ≥ 90% (monthly or category). In-app only.
+
 ### Low-balance warnings (`lib/balance.ts`, `components/BalanceNotice.tsx`)
 - **Never block saving**; amber "warn" or neutral "info" notice only.
 - `availableBalance(transactions, loans, settings, {transactionId?, loanId?})` = current Total Available Balance, excluding the record being edited (no double counting); `null` when no balance is set → no warnings.
@@ -605,6 +615,7 @@ For isolated tests use a **temporary local MongoDB** (`mongod --dbpath <tmp> --p
 | 2026-11-02 | Swipe actions extracted into `SwipeActions`; used for transactions and category budgets. Analytics breakdown as full-width rows | User request (overlapping text on small phones; truncated names) |
 | 2026-11-02 | CSV dates DD/MM/YYYY; non-blocking low-balance warnings (expense, lending, repaying) + budget info notices | User request; warn instead of block because real life allows overdraft/credit |
 | 2026-11-02 | "Sending home" stays an **expense** | User decision: regular planned monthly outflow, budgetable |
+| 2026-11-03 | **Credit card model**: card purchases don't reduce Available balance (only Bank/UPI/Cash count) but do count as spending; card bill payment (transfer → Card) reduces Available balance and card due, never spending; unpaid card amount entered with the balance; statement/due day; single card first | User decisions after walking through the purchase-now-pay-next-month flow (fixes over-stated balance when a bill was unpaid at balance entry) |
 | 2026-11-03 | Auth rate limiting stored in MongoDB (`ratelimits`, TTL index, hashed keys, fail open) + Change password (`POST /api/auth/password`, account-menu dialog) | User request. Vercel serverless has no shared memory; no new dependency or provider (Redis) needed. Fail open so a counter problem never locks users out |
 | 2026-10-31 | Upgraded Next 15.5.28 / React 19.1.10 / Mongoose 8.24.x | Security advisories; Vercel deploy block |
 | 2026-11-03 | Vitest unit tests for pure business logic (`src/lib/__tests__`), TZ pinned to Asia/Kolkata, `server-only` stubbed. Chose the mature 4.1.x line (4.1.12) over the newer 5.x | Lock in §11 formulas and server validation without touching the DB; no app behaviour changed |

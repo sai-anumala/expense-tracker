@@ -4,7 +4,7 @@ import type { Settings } from "../data";
 import { iso, loan, local, payment, tx } from "./fixtures";
 
 const asOf = iso(2026, 11, 1, 9);
-const settings: Settings = { openingBalance: 10_000, balanceAsOf: asOf };
+const settings: Settings = { openingBalance: 10_000, balanceAsOf: asOf, cardDueAtAnchor: null, card: null };
 
 describe("availableBalance", () => {
   const before = tx(-700, iso(2026, 10, 31)); // before the anchor → ignored
@@ -14,8 +14,8 @@ describe("availableBalance", () => {
   const borrowed = loan({ id: "borrowed", direction: "borrowed", amount: 500, date: iso(2026, 11, 2) });
 
   it("null when no balance has been entered", () => {
-    expect(availableBalance([coffee], [], { openingBalance: null, balanceAsOf: null })).toBeNull();
-    expect(availableBalance([coffee], [], { openingBalance: 100, balanceAsOf: null })).toBeNull();
+    expect(availableBalance([coffee], [], { openingBalance: null, balanceAsOf: null, cardDueAtAnchor: null, card: null })).toBeNull();
+    expect(availableBalance([coffee], [], { openingBalance: 100, balanceAsOf: null, cardDueAtAnchor: null, card: null })).toBeNull();
   });
 
   it("entered + transactions + loan cash since the anchor", () => {
@@ -24,7 +24,7 @@ describe("availableBalance", () => {
   });
 
   it("anchor in an earlier month still counts everything after it (monthStart is irrelevant)", () => {
-    expect(availableBalance([coffee], [], { openingBalance: 1000, balanceAsOf: iso(2026, 1, 1) })).toBe(800);
+    expect(availableBalance([coffee], [], { openingBalance: 1000, balanceAsOf: iso(2026, 1, 1), cardDueAtAnchor: null, card: null })).toBe(800);
   });
 
   it("excludes the transaction being edited", () => {

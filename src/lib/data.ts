@@ -90,6 +90,8 @@ export type Transaction = {
   account?: string;
 };
 
+import type { CardSettings } from "./creditCard";
+
 export type Budget = {
   /** Overall monthly spending limit; 0 = not set. */
   monthlyLimit: number;
@@ -103,6 +105,10 @@ export type Settings = {
   openingBalance: number | null;
   /** ISO time the balance was entered; only transactions dated at/after it change the balance. */
   balanceAsOf: string | null;
+  /** Unpaid credit card amount (billed + unbilled) entered together with the balance; null = not entered. */
+  cardDueAtAnchor: number | null;
+  /** The user's single credit card setup (statement/due day, optional limit); null = not set up. */
+  card: CardSettings | null;
 };
 
-export const emptySettings: Settings = { openingBalance: null, balanceAsOf: null };
+export const emptySettings: Settings = { openingBalance: null, balanceAsOf: null, cardDueAtAnchor: null, card: null };
