@@ -15,6 +15,7 @@ A mobile-first expense tracker built with **Next.js 15 (App Router)**, **Tailwin
 - **Transfers** — move money between your own Bank, UPI, Cash and Credit Card (ATM withdrawals, card bill payments); never income or spending. Only card bill payments (lower) and card cash withdrawals (raise) change the balance
 - **Credit card** — one card with statement day, due day and optional limit: bill to pay, unbilled amount, due date, utilization, Pay bill. Card purchases count as spending but don't reduce your balance until you pay the bill
 - **Accounts** — totals per payment method and full history (transactions and transfers)
+- **Reminders** — the 🔔 bell lists card bills due soon / overdue, high card usage, upcoming or overdue loan payments and budgets ≥ 90% used; the most important one also shows as a dismissible banner on the Overview (in-app only)
 - Amounts in **INR (₹)** with Indian digit grouping
 
 ## Getting started
