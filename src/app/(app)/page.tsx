@@ -25,21 +25,23 @@ import { AmountForm } from "@/components/AmountForm";
 import { AppHeader, MonthPill, ProgressBar } from "@/components/ui";
 import { TabPage } from "@/components/BottomNav";
 import { EmptyState, TransactionRow } from "@/components/TransactionRow";
+import { TransferRow } from "@/components/TransferRow";
 import { useAppData } from "@/lib/store";
 import { categories, type Transaction } from "@/lib/data";
+import { mergeFeed, type FeedItem } from "@/lib/transfers";
 import { loanCashEvents, loanTotals } from "@/lib/loans";
 import { anchoredBalance, categoryInsight, net, periodBounds, totalIncome, totalSpent, within } from "@/lib/insights";
 import { dayBucket, daysLeftInMonth, plural, money, monthLabel } from "@/lib/format";
 
-const quickActions: { label: string; icon: typeof CirclePlus; href: string; accent?: boolean; soon?: boolean }[] = [
+const quickActions: { label: string; icon: typeof CirclePlus; href: string; accent?: boolean }[] = [
   { label: "Add Expense", icon: CirclePlus, href: "/add", accent: true },
   { label: "Add Income", icon: Banknote, href: "/add?kind=income" },
-  { label: "Transfer", icon: ArrowLeftRight, href: "/transfer", soon: true },
+  { label: "Transfer", icon: ArrowLeftRight, href: "/transfer" },
   { label: "Lend / Borrow", icon: HandCoins, href: "/loans/new" },
 ];
 
 export default function Dashboard() {
-  const { transactions, budget, settings, saveSettings, loans } = useAppData();
+  const { transactions, budget, settings, saveSettings, loans, transfers } = useAppData();
   const [tipOpen, setTipOpen] = useState(true);
   const [editingOpening, setEditingOpening] = useState(false);
 
@@ -69,10 +71,13 @@ export default function Dashboard() {
   const [whole, cents] = money(balance).split(".");
   const insight = categoryInsight(transactions);
 
-  const groups = new Map<string, Transaction[]>();
-  for (const t of transactions.slice(0, 5)) { // latest 5 only
-    const k = dayBucket(t.date);
-    groups.set(k, [...(groups.get(k) ?? []), t]);
+  // Recent = latest 5 of transactions and transfers merged by date. Transfers are display-only here:
+  // they never enter the balance, tiles or the day "net" below.
+  const feed = mergeFeed(transactions, transfers);
+  const groups = new Map<string, FeedItem<Transaction>[]>();
+  for (const f of feed.slice(0, 5)) {
+    const k = dayBucket(f.date);
+    groups.set(k, [...(groups.get(k) ?? []), f]);
   }
 
   return (
@@ -256,17 +261,12 @@ export default function Dashboard() {
         <section>
           <h2 className="label-caps mb-3 px-1 text-on-surface-variant">Quick Actions</h2>
           <div className="grid grid-cols-4 gap-2">
-            {quickActions.map(({ label, icon: Icon, href, accent, soon }) => (
+            {quickActions.map(({ label, icon: Icon, href, accent }) => (
               <Link
                 key={label}
                 href={href}
                 className="card relative flex flex-col items-center gap-2 px-1 py-4 text-center text-sm transition hover:-translate-y-0.5"
               >
-                {soon && (
-                  <span className="absolute top-1.5 right-1.5 rounded-full bg-primary-fixed px-1.5 py-px text-[9px] font-bold tracking-wide text-primary uppercase">
-                    Soon
-                  </span>
-                )}
                 <span
                   className={`grid size-12 place-items-center rounded-full ${
                     accent ? "bg-primary-fixed/50 text-primary" : "bg-surface-container-high"
@@ -284,16 +284,16 @@ export default function Dashboard() {
         <section>
           <div className="mb-2 flex items-center justify-between px-1">
             <h2 className="text-[22px] font-semibold tracking-tight">Recent Transactions</h2>
-            {transactions.length > 0 && (
+            {feed.length > 0 && (
               <Link href="/accounts" className="flex items-center text-sm font-medium text-primary">
                 View All <ChevronRight className="size-4" aria-hidden />
               </Link>
             )}
           </div>
-          {transactions.length > 0 && (
+          {feed.length > 0 && (
             <p className="mb-1 px-1 text-xs text-on-surface-variant">Swipe a transaction left (or tap it) to view, edit or delete.</p>
           )}
-          {transactions.length === 0 ? (
+          {feed.length === 0 ? (
             <EmptyState
               icon={ReceiptText}
               title="No transactions yet"
@@ -306,21 +306,29 @@ export default function Dashboard() {
             />
           ) : (
             [...groups].map(([day, list]) => {
-              const dayNet = net(list);
+              // Net of transactions only: transfers move money between own accounts (net zero).
+              const dayTx = list.flatMap((f) => (f.kind === "transaction" ? [f.item] : []));
+              const dayNet = net(dayTx);
               return (
                 <div key={day} className="mt-4">
                   <div className="label-caps mb-2 flex justify-between px-1 text-on-surface-variant">
                     <span>{day}</span>
-                    <span className={`tabular-nums normal-case ${dayNet > 0 ? "text-primary" : ""}`}>
-                      {dayNet < 0 ? "-" : "+"}
-                      {money(dayNet)}
-                      {dayNet > 0 && " net"}
-                    </span>
+                    {dayTx.length > 0 && (
+                      <span className={`tabular-nums normal-case ${dayNet > 0 ? "text-primary" : ""}`}>
+                        {dayNet < 0 ? "-" : "+"}
+                        {money(dayNet)}
+                        {dayNet > 0 && " net"}
+                      </span>
+                    )}
                   </div>
                   <ul className="card divide-y divide-surface-container overflow-hidden px-5">
-                    {list.map((t) => (
-                      <TransactionRow key={t.id} t={t} />
-                    ))}
+                    {list.map((f) =>
+                      f.kind === "transfer" ? (
+                        <TransferRow key={`tr-${f.item.id}`} t={f.item} />
+                      ) : (
+                        <TransactionRow key={f.item.id} t={f.item} />
+                      ),
+                    )}
                   </ul>
                 </div>
               );

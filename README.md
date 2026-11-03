@@ -12,7 +12,8 @@ A mobile-first expense tracker built with **Next.js 15 (App Router)**, **Tailwin
 - **Budgets** — overall monthly limit and per-category limits
 - **Analytics** — week / month / year totals vs previous period, category breakdown, top merchants, 4-week trend, CSV export
 - **Loans** — track money lent to / borrowed from friends, relatives, apps and banks; partial or full repayments, optional interest, due date and monthly plan (affects balance, never income or spending)
-- **Accounts** — totals per payment method and full history
+- **Transfers** — move money between your own Bank, UPI, Cash and Credit Card (ATM withdrawals, card bill payments); shown in history, never changes the balance and never counts as income or spending
+- **Accounts** — totals per payment method and full history (transactions and transfers)
 - Amounts in **INR (₹)** with Indian digit grouping
 
 ## Getting started
@@ -46,6 +47,7 @@ Check the connection at `GET /api/health`.
 | GET / PUT | `/api/settings` | Opening balance |
 | GET / POST · PUT / DELETE | `/api/loans` · `/api/loans/:id` | Loans |
 | POST · DELETE | `/api/loans/:id/payments` · `…/payments/:paymentId` | Record / undo a repayment |
+| GET / POST · PUT / DELETE | `/api/transfers` · `/api/transfers/:id` | Transfers between own accounts `{from, to, amount, date, note?}` |
 | GET | `/api/health` | Database connectivity |
 
 Responses use `{ success, payload }` or `{ success: false, error }`. Login, sign-up and change password are rate-limited (429 with `Retry-After`; counters in MongoDB). All routes except auth and health require a session and only touch the signed-in user's data.
@@ -54,10 +56,10 @@ Responses use `{ success, payload }` or `{ success: false, error }`. Login, sign
 
 ```
 src/
-  app/            pages (/, /add, /budgets, /analytics, /accounts) and API routes
+  app/            pages (/, /add, /budgets, /analytics, /accounts, /loans, /transfer) and API routes
   components/     UI pieces (date picker, confirm dialog, amount form, nav)
   lib/            store (client data), db connection, validation, formatting, insights
-  models/         Mongoose models: User, Transaction, Budget, Settings, Loan
+  models/         Mongoose models: User, Transaction, Budget, Settings, Loan, Transfer
   middleware.ts   redirects signed-out visitors to /login
 design/           Stitch screenshots and DESIGN.md
 ```

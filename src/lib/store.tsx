@@ -5,6 +5,7 @@ import { DatabaseZap, RotateCw } from "lucide-react";
 import { Splash } from "@/components/Splash";
 import { emptyBudget, emptySettings, type Budget, type Settings, type Transaction } from "./data";
 import type { Loan } from "./loans";
+import type { Transfer, TransferInput } from "./transfers";
 
 type NewTransaction = Omit<Transaction, "id"> & { receiptName?: string };
 export type LoanInput = Omit<Loan, "id" | "payments">;
@@ -32,6 +33,11 @@ type Ctx = {
   removeLoan: (id: string) => Promise<void>;
   addPayment: (loanId: string, p: PaymentInput) => Promise<void>;
   removePayment: (loanId: string, paymentId: string) => Promise<void>;
+  /** Money moved between the user's own accounts, newest first. Never changes the balance, income or spending. */
+  transfers: Transfer[];
+  addTransfer: (t: TransferInput) => Promise<void>;
+  updateTransfer: (id: string, t: TransferInput) => Promise<void>;
+  removeTransfer: (id: string) => Promise<void>;
 };
 
 const AppDataContext = createContext<Ctx | null>(null);
@@ -98,7 +104,7 @@ export async function api<T>(url: string, init?: RequestInit): Promise<T> {
 export const errorMessage = (e: unknown, fallback = "Something went wrong. Please try again.") =>
   e instanceof Error && e.message ? e.message : fallback;
 
-const byDateDesc = (a: Transaction, b: Transaction) => +new Date(b.date) - +new Date(a.date);
+const byDateDesc = (a: { date: string }, b: { date: string }) => +new Date(b.date) - +new Date(a.date);
 
 /** All app data is read from and written to MongoDB via the API routes. */
 export function TransactionsProvider({ children }: { children: React.ReactNode }) {
@@ -107,6 +113,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
   const [budget, setBudget] = useState<Budget>(emptyBudget);
   const [settings, setSettings] = useState<Settings>(emptySettings);
   const [loans, setLoans] = useState<Loan[]>([]);
+  const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   // Keep the launch splash up for a short minimum so its animation can finish (only on app open;
   // the (app) layout persists across tab navigation, so this doesn't replay).
@@ -120,18 +127,20 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
   const load = useCallback(async () => {
     setStatus("loading");
     try {
-      const [me, tx, b, s, ln] = await Promise.all([
+      const [me, tx, b, s, ln, tr] = await Promise.all([
         api<User>("/api/auth/me"),
         api<Transaction[]>("/api/transactions"),
         api<Budget>("/api/budget"),
         api<Settings>("/api/settings"),
         api<Loan[]>("/api/loans"),
+        api<Transfer[]>("/api/transfers"),
       ]);
       setUser(me);
       setTransactions(tx.sort(byDateDesc));
       setBudget(b);
       setSettings(s);
       setLoans(ln);
+      setTransfers(tr.sort(byDateDesc));
       setStatus("ready");
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) return; // redirecting to /login; keep the spinner
@@ -242,6 +251,37 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     replaceLoan(await api<Loan>(`/api/loans/${loanId}/payments/${paymentId}`, { method: "DELETE" }));
   }, []);
 
+  // ── Transfers (own accounts) ──
+  const dropTransferIfGone = (id: string, e: unknown) => {
+    if (e instanceof ApiError && e.status === 404) setTransfers((prev) => prev.filter((x) => x.id !== id));
+  };
+
+  const addTransfer = useCallback(async (t: TransferInput) => {
+    const saved = await api<Transfer>("/api/transfers", { method: "POST", body: JSON.stringify(t) });
+    setTransfers((prev) => [saved, ...prev].sort(byDateDesc));
+  }, []);
+
+  const updateTransfer = useCallback(async (id: string, t: TransferInput) => {
+    try {
+      const saved = await api<Transfer>(`/api/transfers/${id}`, { method: "PUT", body: JSON.stringify(t) });
+      setTransfers((prev) => prev.map((x) => (x.id === id ? saved : x)).sort(byDateDesc));
+    } catch (e) {
+      dropTransferIfGone(id, e);
+      throw e;
+    }
+  }, []);
+
+  const removeTransfer = useCallback(async (id: string) => {
+    try {
+      await api(`/api/transfers/${id}`, { method: "DELETE" });
+      setTransfers((prev) => prev.filter((x) => x.id !== id));
+    } catch (e) {
+      // Already deleted elsewhere: that's the outcome the user wanted.
+      if (e instanceof ApiError && e.status === 404) return dropTransferIfGone(id, e);
+      throw e;
+    }
+  }, []);
+
   const logout = useCallback(async () => {
     try {
       await api("/api/auth/logout", { method: "POST" });
@@ -294,6 +334,10 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
         removeLoan,
         addPayment,
         removePayment,
+        transfers,
+        addTransfer,
+        updateTransfer,
+        removeTransfer,
       }}
     >
       <div className="motion-safe:animate-[ledgerly-fade-in_0.4s_ease-out_both]">{children}</div>

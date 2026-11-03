@@ -1,122 +1,373 @@
 "use client";
 
 import Link from "next/link";
-import { Landmark, Wallet, IndianRupee, ArrowLeftRight, Banknote, CreditCard, ShieldCheck, Sparkles } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
+import {
+  ArrowDownUp,
+  ArrowLeftRight,
+  Banknote,
+  CircleCheck,
+  CreditCard,
+  IndianRupee,
+  Info,
+  Landmark,
+  NotebookPen,
+  Smartphone,
+  type LucideIcon,
+} from "lucide-react";
 import { AppHeader } from "@/components/ui";
 import { TabPage } from "@/components/BottomNav";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { DateTimePicker } from "@/components/DateTimePicker";
+import { sanitizeAmount } from "@/components/AmountForm";
+import { EmptyState } from "@/components/TransactionRow";
+import { TransferRow } from "@/components/TransferRow";
+import { errorMessage, useAppData } from "@/lib/store";
+import { periodBounds } from "@/lib/insights";
+import { CURRENCY_SYMBOL, money, plural } from "@/lib/format";
+import {
+  CARD_BILL_HINT,
+  TRANSFER_ACCOUNTS,
+  isCardBill,
+  transferAccountLabels,
+  transferRoute,
+  transferTotals,
+  type TransferAccount,
+} from "@/lib/transfers";
 
-const upcoming = [
-  { icon: ArrowLeftRight, title: "Bank ↔ wallet / UPI", body: "Move money between your own accounts in one tap." },
-  { icon: Banknote, title: "ATM cash withdrawals", body: "Bank to cash, tracked so your cash in hand is always right." },
-  { icon: CreditCard, title: "Credit card bill payments", body: "Pay off a card without counting it as spending twice." },
-  { icon: ShieldCheck, title: "Never counted as spending", body: "Transfers keep your budget and analytics honest." },
-];
+const MAX_AMOUNT = 10_000_000_000; // keep in sync with src/lib/api.ts
 
-/** "Coming soon" placeholder for transfers between the user's own accounts. Animations respect reduce-motion. */
-export default function Transfer() {
+const accountIcons: Record<TransferAccount, LucideIcon> = {
+  bank: Landmark,
+  upi: Smartphone,
+  cash: Banknote,
+  card: CreditCard,
+};
+
+export default function TransferPage() {
   return (
-    <>
-      <AppHeader subtitle="Transfer" />
-      <TabPage>
-        {/* Hero */}
-        <section className="relative overflow-hidden rounded-xl bg-surface-container-lowest px-5 pt-6 pb-7 text-center shadow-sm">
-          <div className="pointer-events-none absolute -top-10 -right-10 size-40 rounded-full bg-primary/15 blur-2xl motion-safe:animate-pulse" />
-          <div className="pointer-events-none absolute -bottom-12 -left-10 size-36 rounded-full bg-primary-fixed/30 blur-2xl" />
+    <Suspense>
+      <TransferScreen />
+    </Suspense>
+  );
+}
 
-          <span
-            className="relative inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold text-primary motion-safe:animate-[ledgerly-shimmer_3s_linear_infinite]"
-            style={{
-              backgroundImage:
-                "linear-gradient(90deg, var(--color-primary-fixed) 0%, #ffffff 50%, var(--color-primary-fixed) 100%)",
-              backgroundSize: "200% 100%",
-            }}
-          >
-            <Sparkles className="size-3.5" aria-hidden /> Coming soon
-          </span>
+function TransferScreen() {
+  const params = useSearchParams();
+  const editId = params.get("id");
+  // Remount the form when switching between "new" and a specific transfer so its fields reset.
+  return <TransferForm key={editId ?? "new"} editId={editId} />;
+}
 
-          {/* Illustration: coins travelling from bank to wallet */}
-          <div className="relative mx-auto mt-6 h-24 max-w-72" aria-hidden>
-            <svg className="absolute inset-x-12 top-1/2 h-2 -translate-y-1/2" viewBox="0 0 100 2" preserveAspectRatio="none">
-              <line
-                x1="0"
-                y1="1"
-                x2="100"
-                y2="1"
-                stroke="var(--color-outline-variant)"
-                strokeWidth="2"
-                strokeDasharray="4 4"
-                vectorEffect="non-scaling-stroke"
-                className="motion-safe:animate-[ledgerly-dash_0.8s_linear_infinite]"
-              />
-            </svg>
-            <div className="absolute top-1/2 left-0 -translate-y-1/2">
-              <span className="relative grid size-16 place-items-center rounded-2xl bg-primary text-on-primary shadow-lg shadow-primary/30 motion-safe:animate-[ledgerly-float_3s_ease-in-out_infinite]">
-                <Landmark className="size-7" />
-              </span>
-            </div>
-            <div className="absolute top-1/2 right-0 -translate-y-1/2">
-              <span
-                className="relative grid size-16 place-items-center rounded-2xl bg-primary-container text-on-primary shadow-lg shadow-primary/30 motion-safe:animate-[ledgerly-float_3s_ease-in-out_infinite]"
-                style={{ animationDelay: "1.5s" }}
-              >
-                <Wallet className="size-7" />
-                <span className="absolute -top-1 -right-1 size-3 rounded-full bg-primary-fixed motion-safe:animate-ping" />
-              </span>
-            </div>
-            {[0, 0.8, 1.6].map((delay) => (
-              <span
-                key={delay}
-                className="absolute top-1/2 left-[8%] grid size-7 place-items-center rounded-full bg-[#eda100] text-white opacity-0 shadow-md motion-safe:animate-[ledgerly-travel_2.4s_ease-in-out_infinite] motion-reduce:hidden"
-                style={{ animationDelay: `${delay}s` }}
-              >
-                <IndianRupee className="size-4" strokeWidth={2.5} />
-              </span>
-            ))}
-          </div>
+function TransferForm({ editId }: { editId: string | null }) {
+  const router = useRouter();
+  const { transfers, addTransfer, updateTransfer } = useAppData();
+  const existing = editId ? transfers.find((t) => t.id === editId) : undefined;
+  const isEdit = Boolean(existing);
 
-          <h1 className="relative mt-6 text-[26px] leading-8 font-semibold tracking-tight">Move money between your accounts</h1>
-          <p className="relative mx-auto mt-2 max-w-xs text-sm text-on-surface-variant">
-            Transfers will let you shift money between bank, UPI, wallet and cash without it showing up as spending.
-          </p>
-        </section>
+  const [from, setFrom] = useState<TransferAccount>(existing?.from ?? "bank");
+  const [to, setTo] = useState<TransferAccount>(existing?.to ?? "cash");
+  const [amount, setAmount] = useState(existing ? existing.amount.toFixed(2) : "");
+  const [when, setWhen] = useState(() => (existing ? new Date(existing.date) : new Date()));
+  const [note, setNote] = useState(existing?.note ?? "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState(false);
 
-        {/* What's coming */}
-        <section>
-          <h2 className="label-caps mb-3 px-1 text-on-surface-variant">What&apos;s coming</h2>
-          <ul className="space-y-2">
-            {upcoming.map(({ icon: Icon, title, body }, i) => (
-              <li
-                key={title}
-                className="card flex items-start gap-3 p-4 motion-safe:animate-[ledgerly-fade-up_0.5s_ease-out_both]"
-                style={{ animationDelay: `${150 + i * 120}ms` }}
-              >
-                <span className="grid size-10 shrink-0 place-items-center rounded-full bg-primary-fixed/50 text-primary">
-                  <Icon className="size-5" aria-hidden />
-                </span>
-                <span>
-                  <span className="block font-semibold">{title}</span>
-                  <span className="block text-sm text-on-surface-variant">{body}</span>
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
+  const value = Number.parseFloat(amount) || 0;
+  const tooLarge = value > MAX_AMOUNT;
+  const canSave = value > 0 && !tooLarge && from !== to && !saving;
+  const month = transferTotals(transfers, periodBounds("month"));
 
-        <div
-          className="space-y-2 text-center motion-safe:animate-[ledgerly-fade-up_0.5s_ease-out_both]"
-          style={{ animationDelay: "700ms" }}
-        >
-          <p className="text-sm text-on-surface-variant">
-            Until then, money lent or borrowed goes in <Link href="/loans" className="font-medium text-primary">Loans</Link>.
-          </p>
+  // Picking the current "To" account as "From" swaps them, so From and To are never the same.
+  const pickFrom = (a: TransferAccount) => {
+    if (a === to) setTo(from);
+    setFrom(a);
+  };
+  const swap = () => {
+    setFrom(to);
+    setTo(from);
+  };
+
+  const payload = () => ({ from, to, amount: value, date: when.toISOString(), note: note.trim() || undefined });
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    setSaved(null);
+    try {
+      if (isEdit && editId) {
+        await updateTransfer(editId, payload());
+        router.replace("/transfer");
+        return;
+      }
+      await addTransfer(payload());
+      setSaved(`Saved ${transferRoute({ from, to })}, ${money(value)}.`);
+      setAmount("");
+      setNote("");
+      setWhen(new Date());
+    } catch (e) {
+      setError(errorMessage(e, isEdit ? "Could not update the transfer." : "Could not save the transfer."));
+      setConfirm(false);
+    }
+    setSaving(false);
+  }
+
+  function onSaveClick() {
+    if (!canSave) return;
+    if (isEdit) setConfirm(true); // edits need a "Yes" confirmation
+    else save();
+  }
+
+  if (editId && !existing && !saving) {
+    return (
+      <div className="grid min-h-dvh place-items-center px-6 text-center">
+        <div>
+          <p className="text-lg font-semibold">Transfer not found</p>
+          <p className="mt-1 text-sm text-on-surface-variant">It may have been deleted.</p>
           <Link
-            href="/"
-            className="inline-flex items-center justify-center rounded-full bg-primary px-6 py-3 font-semibold text-on-primary shadow-lg shadow-primary/25"
+            href="/transfer"
+            className="mt-5 inline-block rounded-full bg-primary px-5 py-2.5 font-medium text-on-primary"
           >
-            Back to Overview
+            Back to transfers
           </Link>
         </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <AppHeader subtitle={isEdit ? "Edit transfer" : "Transfer"} />
+      <TabPage>
+        <Illustration from={from} to={to} />
+
+        <section className="card space-y-4 p-4">
+          <AccountChips label="From" value={from} onPick={pickFrom} />
+          <div className="flex justify-center">
+            <button
+              type="button"
+              onClick={swap}
+              aria-label="Swap From and To"
+              className="grid size-9 place-items-center rounded-full bg-surface-container text-on-surface-variant transition hover:bg-surface-container-high"
+            >
+              <ArrowDownUp className="size-4" aria-hidden />
+            </button>
+          </div>
+          <AccountChips label="To" value={to} disabled={from} onPick={setTo} />
+          {isCardBill({ from, to }) && (
+            <p className="flex items-start gap-2 rounded-lg bg-[#e3eefc] px-3 py-2.5 text-sm text-[#1d5aa3]">
+              <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
+              {CARD_BILL_HINT}
+            </p>
+          )}
+        </section>
+
+        <section className="card px-6 py-6 text-center">
+          <label htmlFor="amount" className="label-caps text-on-surface-variant">
+            Amount moved
+          </label>
+          <div className="mt-2 flex items-baseline justify-center font-sans text-5xl font-bold tracking-tight tabular-nums">
+            <span className="mr-1 text-4xl font-semibold text-outline">{CURRENCY_SYMBOL}</span>
+            <input
+              id="amount"
+              inputMode="decimal"
+              placeholder="0.00"
+              value={amount}
+              aria-invalid={tooLarge}
+              onChange={(e) => setAmount(sanitizeAmount(e.target.value))}
+              className="bg-transparent caret-primary outline-none placeholder:font-semibold placeholder:text-outline-variant"
+              style={{ width: `${Math.max(4, amount.length) + 0.5}ch` }}
+            />
+          </div>
+          {tooLarge && (
+            <p role="alert" className="mt-3 text-sm text-secondary">
+              That amount is too large.
+            </p>
+          )}
+        </section>
+
+        <section className="card space-y-3 p-4">
+          <DateTimePicker label="Date & Time" value={when} onChange={setWhen} />
+          <label className="relative flex items-center gap-4 rounded-lg bg-surface-container-low px-4 py-3">
+            <span className="grid size-10 shrink-0 place-items-center rounded-full bg-surface-container-lowest">
+              <NotebookPen className="size-5" aria-hidden />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="label-caps block text-on-surface-variant">Note (optional)</span>
+              <input
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                maxLength={120}
+                placeholder="e.g. ATM withdrawal"
+                className="w-full bg-transparent text-lg outline-none placeholder:text-outline"
+              />
+            </span>
+          </label>
+        </section>
+
+        {error && (
+          <p role="alert" className="rounded-lg bg-secondary-fixed px-4 py-3 text-sm text-secondary">
+            {error}
+          </p>
+        )}
+        {saved && (
+          <p role="status" className="rounded-lg bg-primary-fixed/50 px-4 py-3 text-sm text-primary">
+            {saved}
+          </p>
+        )}
+
+        <button
+          onClick={onSaveClick}
+          disabled={!canSave}
+          className="flex w-full items-center gap-3 rounded-xl bg-primary px-6 py-5 text-on-primary shadow-lg shadow-primary/25 transition hover:bg-primary-container disabled:opacity-50"
+        >
+          <CircleCheck className="size-6" aria-hidden />
+          <span className="flex-1 text-left text-xl font-semibold">
+            {saving && !isEdit ? "Saving…" : isEdit ? "Save changes" : "Save transfer"}
+          </span>
+          <span className="rounded-full bg-primary-container px-4 py-1 tabular-nums text-lg">{money(value)}</span>
+        </button>
+        {isEdit && (
+          <Link href="/transfer" className="block text-center text-sm font-medium text-on-surface-variant">
+            Cancel editing
+          </Link>
+        )}
+
+        <ConfirmDialog
+          open={confirm}
+          title="Save changes to this transfer?"
+          message={
+            <>
+              It will be updated to <b className="text-on-surface">{transferRoute({ from, to })}</b>,{" "}
+              <b className="tabular-nums text-on-surface">{money(value)}</b>.
+            </>
+          }
+          busy={saving}
+          onCancel={() => setConfirm(false)}
+          onConfirm={save}
+        />
+
+        {/* History */}
+        <section>
+          <div className="mb-2 flex items-baseline justify-between gap-3 px-1">
+            <h2 className="text-[22px] font-semibold tracking-tight">Your transfers</h2>
+            <span className="text-right text-xs tabular-nums text-on-surface-variant">
+              This month: {plural(month.count, "transfer")} · {money(month.amount)}
+            </span>
+          </div>
+          {transfers.length === 0 ? (
+            <EmptyState
+              icon={ArrowLeftRight}
+              title="No transfers yet"
+              body="Record money you move between your bank, UPI, cash and credit card. It never counts as spending."
+            />
+          ) : (
+            <>
+              <p className="mb-1 px-1 text-xs text-on-surface-variant">
+                Swipe a transfer left (or tap it) to view, edit or delete.
+              </p>
+              <ul className="card divide-y divide-surface-container overflow-hidden px-5">
+                {transfers.map((t) => (
+                  <TransferRow key={t.id} t={t} />
+                ))}
+              </ul>
+            </>
+          )}
+        </section>
       </TabPage>
     </>
+  );
+}
+
+function AccountChips({
+  label,
+  value,
+  disabled,
+  onPick,
+}: {
+  label: string;
+  value: TransferAccount;
+  disabled?: TransferAccount;
+  onPick: (a: TransferAccount) => void;
+}) {
+  return (
+    <fieldset>
+      <legend className="label-caps mb-2 px-1 text-on-surface-variant">{label}</legend>
+      <div className="grid grid-cols-4 gap-2">
+        {TRANSFER_ACCOUNTS.map((a) => {
+          const Icon = accountIcons[a];
+          const on = a === value;
+          const off = a === disabled;
+          return (
+            <button
+              key={a}
+              type="button"
+              aria-pressed={on}
+              disabled={off}
+              title={off ? "Already chosen as From" : undefined}
+              onClick={() => onPick(a)}
+              className={`flex flex-col items-center justify-center gap-1 rounded-xl px-1 py-3 text-center text-[13px] leading-tight transition ${
+                on
+                  ? "bg-primary text-on-primary"
+                  : off
+                    ? "bg-surface-container-low text-outline-variant"
+                    : "bg-surface-container-low hover:bg-surface-container"
+              }`}
+            >
+              <Icon className="size-5 shrink-0" aria-hidden />
+              {transferAccountLabels[a]}
+            </button>
+          );
+        })}
+      </div>
+    </fieldset>
+  );
+}
+
+/** Compact animated header: coins travelling from the From account to the To account (motion-safe). */
+function Illustration({ from, to }: { from: TransferAccount; to: TransferAccount }) {
+  const FromIcon = accountIcons[from];
+  const ToIcon = accountIcons[to];
+  return (
+    <section className="relative overflow-hidden rounded-xl bg-surface-container-lowest px-5 py-4 shadow-sm">
+      <div className="pointer-events-none absolute -top-10 -right-10 size-32 rounded-full bg-primary/10 blur-2xl" />
+      <div className="relative mx-auto h-14 max-w-60" aria-hidden>
+        <svg className="absolute inset-x-10 top-1/2 h-2 -translate-y-1/2" viewBox="0 0 100 2" preserveAspectRatio="none">
+          <line
+            x1="0"
+            y1="1"
+            x2="100"
+            y2="1"
+            stroke="var(--color-outline-variant)"
+            strokeWidth="2"
+            strokeDasharray="4 4"
+            vectorEffect="non-scaling-stroke"
+            className="motion-safe:animate-[ledgerly-dash_0.8s_linear_infinite]"
+          />
+        </svg>
+        <span className="absolute top-1/2 left-0 grid size-12 -translate-y-1/2 place-items-center rounded-2xl bg-primary text-on-primary shadow-md shadow-primary/30">
+          <FromIcon className="size-6" />
+        </span>
+        <span className="absolute top-1/2 right-0 grid size-12 -translate-y-1/2 place-items-center rounded-2xl bg-primary-container text-on-primary shadow-md shadow-primary/30">
+          <ToIcon className="size-6" />
+        </span>
+        {[0, 1.2].map((delay) => (
+          <span
+            key={delay}
+            className="absolute top-1/2 left-[8%] grid size-6 place-items-center rounded-full bg-[#eda100] text-white opacity-0 shadow-md motion-safe:animate-[ledgerly-travel_2.4s_ease-in-out_infinite] motion-reduce:hidden"
+            style={{ animationDelay: `${delay}s` }}
+          >
+            <IndianRupee className="size-3.5" strokeWidth={2.5} />
+          </span>
+        ))}
+      </div>
+      <p className="relative mt-3 text-center text-sm text-on-surface-variant">
+        Move money between your own accounts. Your total balance stays the same, and it&apos;s never counted as
+        spending.
+      </p>
+    </section>
   );
 }
