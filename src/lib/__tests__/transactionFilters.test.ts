@@ -5,6 +5,9 @@ import {
   PAGE_SIZE,
   accountChoices,
   categoryChoices,
+  dateRangeLabel,
+  dayFromValue,
+  dayToValue,
   feedTotals,
   filterFeed,
   filtersFromParams,
@@ -148,5 +151,21 @@ describe("counts", () => {
     expect(hiddenFilterCount({ ...NO_FILTERS, period: "last30", account: "UPI", q: "x" })).toBe(2);
     expect(hasFilters(NO_FILTERS)).toBe(false);
     expect(hasFilters({ ...NO_FILTERS, type: "income" })).toBe(true);
+  });
+});
+
+describe("date range helpers", () => {
+  it("labels ranges", () => {
+    expect(dateRangeLabel("", "")).toBe("");
+    expect(dateRangeLabel("2026-10-01", "2026-11-06")).toBe("1 Oct – 6 Nov 2026");
+    expect(dateRangeLabel("2025-12-01", "2026-01-06")).toBe("1 Dec 2025 – 6 Jan 2026");
+    expect(dateRangeLabel("2026-11-06", "2026-11-06")).toBe("6 Nov 2026");
+    expect(dateRangeLabel("2026-10-01", "")).toBe("From 1 Oct 2026");
+    expect(dateRangeLabel("", "2026-10-01")).toBe("Until 1 Oct 2026");
+    expect(dateRangeLabel("nonsense", "")).toBe("");
+  });
+  it("round-trips local days", () => {
+    expect(dayToValue(dayFromValue("2026-03-09")!)).toBe("2026-03-09");
+    expect(dayFromValue("x")).toBeNull();
   });
 });

@@ -49,6 +49,8 @@ type Ctx = {
   settings: Settings;
   /** Saves the balance (+ unpaid credit card amount, default 0); the server stamps balanceAsOf = now. */
   saveSettings: (s: { openingBalance: number | null; cardDueAtAnchor?: number }) => Promise<void>;
+  /** Removes reminders for this account on every device. Removed at once; put back if the save fails. */
+  dismissAlerts: (keys: string[]) => Promise<void>;
   /** Sets up / edits (or removes with null) the credit card. Never re-anchors the balance. */
   saveCard: (card: CardSettings | null) => Promise<void>;
   /** Money lent/borrowed. Affects Total Available Balance, never income/spending. */
@@ -287,6 +289,15 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     setSettings(await api<Settings>("/api/settings", { method: "PUT", body: JSON.stringify(s) }));
   }, []);
 
+  const dismissAlerts = useCallback(async (keys: string[]) => {
+    setSettings((prev) => ({ ...prev, dismissedAlerts: [...prev.dismissedAlerts, ...keys] }));
+    try {
+      await api("/api/settings/alerts", { method: "POST", body: JSON.stringify({ keys }) });
+    } catch {
+      setSettings((prev) => ({ ...prev, dismissedAlerts: prev.dismissedAlerts.filter((k) => !keys.includes(k)) }));
+    }
+  }, []);
+
   const saveCard = useCallback(async (card: CardSettings | null) => {
     setSettings(
       await api<Settings>("/api/settings/card", { method: "PUT", body: JSON.stringify(card ?? { card: null }) }),
@@ -458,6 +469,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
         deleteCategory,
         settings,
         saveSettings,
+        dismissAlerts,
         saveCard,
         loans,
         addLoan,

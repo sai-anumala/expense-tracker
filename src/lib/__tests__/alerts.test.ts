@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { buildAlerts, isAttention, type AlertInput } from "../alerts";
+import { activeAlerts, buildAlerts, isAttention, type AlertInput } from "../alerts";
 import type { CardSettings } from "../creditCard";
 import { emptyBudget, type Budget, type Settings } from "../data";
 import { money } from "../format";
@@ -7,7 +7,7 @@ import type { Transfer } from "../transfers";
 import { iso, loan, local, payment, tx } from "./fixtures";
 
 const CARD: CardSettings = { statementDay: 15, dueDay: 5, limit: 50000 };
-const anchored: Settings = { openingBalance: 10000, balanceAsOf: iso(2026, 10, 1, 9), cardDueAtAnchor: 0, card: CARD };
+const anchored: Settings = { openingBalance: 10000, balanceAsOf: iso(2026, 10, 1, 9), cardDueAtAnchor: 0, card: CARD, dismissedAlerts: [] };
 const noCard: Settings = { ...anchored, card: null };
 const cardTx = (amount: number, date: string) => tx(amount, date, { account: "Credit Card" });
 const bill = (amount: number, date: string): Transfer => ({ id: `bill-${date}`, from: "bank", to: "card", amount, date });
@@ -169,5 +169,45 @@ describe("ordering and ids", () => {
     expect(out.slice(1).map((a) => a.id)).toEqual(["card:bill", "budget:month"]); // earlier date first
     expect(run(input).map((a) => a.id)).toEqual(out.map((a) => a.id));
     expect(out.filter(isAttention)).toHaveLength(3);
+  });
+});
+
+describe("removing reminders", () => {
+  const keysOf = (over: Partial<AlertInput>) => buildAlerts({ transactions: [], transfers: [], loans: [], budget: emptyBudget, settings: { balanceAsOf: null }, ...over });
+  const budget = { monthlyLimit: 1000, categories: [] };
+  const spent = (amount: number, date: string) => [{ id: "t", merchant: "x", category: "food" as const, amount: -amount, date }];
+
+  it("hides only the removed reminder", () => {
+    const list = keysOf({ budget, transactions: spent(950, "2026-11-03T05:00:00.000Z"), now: new Date("2026-11-06T06:00:00.000Z"), pendingReview: 2, latestReviewAt: 100 });
+    expect(list).toHaveLength(2);
+    const left = activeAlerts(list, [list[0].dismissKey]);
+    expect(left).toHaveLength(1);
+    expect(left[0].id).toBe(list[1].id);
+  });
+  it("brings it back when the same budget gets worse", () => {
+    const now = new Date("2026-11-06T06:00:00.000Z");
+    const warning = keysOf({ budget, transactions: spent(950, "2026-11-03T05:00:00.000Z"), now })[0];
+    const over = keysOf({ budget, transactions: spent(1200, "2026-11-03T05:00:00.000Z"), now })[0];
+    expect(over.severity).toBe("urgent");
+    expect(activeAlerts([warning], [warning.dismissKey])).toHaveLength(0);
+    expect(activeAlerts([over], [warning.dismissKey])).toHaveLength(1);
+  });
+  it("stays gone at the same stage as spending rises within it", () => {
+    const now = new Date("2026-11-06T06:00:00.000Z");
+    const a = keysOf({ budget, transactions: spent(910, "2026-11-03T05:00:00.000Z"), now })[0];
+    const b = keysOf({ budget, transactions: spent(980, "2026-11-03T05:00:00.000Z"), now })[0];
+    expect(activeAlerts([b], [a.dismissKey])).toHaveLength(0);
+  });
+  it("brings it back next month", () => {
+    const a = keysOf({ budget, transactions: spent(950, "2026-11-03T05:00:00.000Z"), now: new Date("2026-11-06T06:00:00.000Z") })[0];
+    const b = keysOf({ budget, transactions: spent(950, "2026-12-03T05:00:00.000Z"), now: new Date("2026-12-06T06:00:00.000Z") })[0];
+    expect(activeAlerts([b], [a.dismissKey])).toHaveLength(1);
+  });
+  it("bank alerts: a newer alert returns, reviewing the newest doesn't", () => {
+    const at = (latestReviewAt: number, pendingReview = 2) => keysOf({ pendingReview, latestReviewAt })[0];
+    const removed = [at(500).dismissKey];
+    expect(activeAlerts([at(500)], removed)).toHaveLength(0);
+    expect(activeAlerts([at(400, 1)], removed)).toHaveLength(0);
+    expect(activeAlerts([at(600, 3)], removed)).toHaveLength(1);
   });
 });

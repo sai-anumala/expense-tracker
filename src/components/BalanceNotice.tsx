@@ -3,7 +3,7 @@ import { moneySigned } from "@/lib/format";
 
 /**
  * Non-blocking notice. "warn" (amber) = money going out exceeds the available balance;
- * "info" (neutral) = something worth knowing (e.g. budget above balance). Saving is still allowed.
+ * "info" (neutral) = something worth knowing (e.g. more budget left than balance). Saving is still allowed.
  */
 export function BalanceNotice({ tone = "warn", children }: { tone?: "warn" | "info"; children: React.ReactNode }) {
   const Icon = tone === "warn" ? TriangleAlert : Info;

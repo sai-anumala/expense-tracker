@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ReceiptText, Search, SearchX, SlidersHorizontal, X } from "lucide-react";
 import { TabPage } from "@/components/BottomNav";
+import { DateRangeDialog, DateRangeField } from "@/components/DateRangePicker";
 import { Pagination } from "@/components/Pagination";
 import { EmptyState, TransactionRow } from "@/components/TransactionRow";
 import { TransferRow } from "@/components/TransferRow";
@@ -62,6 +63,7 @@ function AllTransactions() {
   const { transactions, transfers, categoryOf } = useAppData();
   const [{ filters, page }, setView] = useState(() => filtersFromParams((k) => params.get(k)));
   const [panelOpen, setPanelOpen] = useState(false);
+  const [pickingDates, setPickingDates] = useState(false);
   const listRef = useRef<HTMLElement>(null);
 
   const feed = useMemo(() => mergeFeed(transactions, transfers), [transactions, transfers]);
@@ -174,7 +176,14 @@ function AllTransactions() {
               </button>
 
               <div id="transaction-filters" className={`card grid grid-cols-2 gap-2 p-3 ${panelOpen ? "" : "hidden lg:grid"}`}>
-                <FilterSelect label="Date" value={filters.period} onChange={(v) => patch({ period: v as TxFilters["period"] })}>
+                <FilterSelect
+                  label="Date"
+                  value={filters.period}
+                  onChange={(v) => {
+                    patch({ period: v as TxFilters["period"] });
+                    if (v === "custom" && !filters.from && !filters.to) setPickingDates(true);
+                  }}
+                >
                   {periods.map(({ id, label }) => (
                     <option key={id} value={id}>
                       {label}
@@ -188,12 +197,7 @@ function AllTransactions() {
                     </option>
                   ))}
                 </FilterSelect>
-                {filters.period === "custom" && (
-                  <>
-                    <FilterDate label="From" value={filters.from} onChange={(v) => patch({ from: v })} />
-                    <FilterDate label="To" value={filters.to} onChange={(v) => patch({ to: v })} />
-                  </>
-                )}
+                {filters.period === "custom" && <DateRangeField from={filters.from} to={filters.to} onOpen={() => setPickingDates(true)} />}
                 <FilterSelect
                   label="Category"
                   value={filters.category}
@@ -281,6 +285,22 @@ function AllTransactions() {
             </section>
           </PageColumns>
         )}
+
+        {pickingDates && (
+          <DateRangeDialog
+            from={filters.from}
+            to={filters.to}
+            onClose={() => {
+              setPickingDates(false);
+              // Cancelled without choosing any dates: nothing custom to keep.
+              if (!filters.from && !filters.to) patch({ period: "any" });
+            }}
+            onDone={(from, to) => {
+              setPickingDates(false);
+              patch({ from, to });
+            }}
+          />
+        )}
       </TabPage>
     </>
   );
@@ -311,15 +331,6 @@ function FilterSelect({
         {children}
       </select>
       <ChevronDown className="pointer-events-none absolute right-2 bottom-2.5 size-4 text-on-surface-variant" aria-hidden />
-    </label>
-  );
-}
-
-function FilterDate({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
-  return (
-    <label className="block min-w-0 rounded-lg bg-surface-container-low px-3 py-2">
-      <span className="label-caps block text-on-surface-variant">{label}</span>
-      <input type="date" value={value} onChange={(e) => onChange(e.target.value)} className="w-full min-w-0 bg-transparent text-sm outline-none" />
     </label>
   );
 }

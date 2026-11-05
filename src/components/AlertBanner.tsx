@@ -1,14 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
 import { usePathname } from "next/navigation";
 import { X } from "lucide-react";
 import { isAttention } from "@/lib/alerts";
+import { useAppData } from "@/lib/store";
 import { alertIcons, severityTile, useAlerts } from "./NotificationBell";
-
-// Dismissed alert ids for this browser tab only (in memory: survives tab switches, cleared on reload). Not persisted.
-const dismissed = new Set<string>();
 
 /** AlertBanner on the Overview page ("/") only; nothing elsewhere. */
 export function OverviewAlertBanner() {
@@ -18,8 +15,8 @@ export function OverviewAlertBanner() {
 /** Slim banner with the single most important urgent/warning reminder. Rendered by AppHeader on Overview only. */
 export function AlertBanner() {
   const alerts = useAlerts();
-  const [, rerender] = useState(0);
-  const top = alerts.find((a) => isAttention(a) && !dismissed.has(a.id));
+  const { dismissAlerts } = useAppData();
+  const top = alerts.find(isAttention);
   if (!top) return null;
   const Icon = alertIcons[top.icon];
   const urgent = top.severity === "urgent";
@@ -41,10 +38,7 @@ export function AlertBanner() {
         </Link>
         <button
           aria-label="Dismiss reminder"
-          onClick={() => {
-            dismissed.add(top.id);
-            rerender((n) => n + 1);
-          }}
+          onClick={() => dismissAlerts([top.dismissKey])}
           className="grid size-8 shrink-0 place-items-center rounded-full text-on-surface-variant hover:bg-surface-container"
         >
           <X className="size-4" aria-hidden />

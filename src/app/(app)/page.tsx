@@ -33,7 +33,7 @@ import type { Transaction } from "@/lib/data";
 import { mergeFeed, type FeedItem } from "@/lib/transfers";
 import { loanTotals } from "@/lib/loans";
 import { availableCashEvents, cardSummary, currentCardDue, needsCardDuePrompt, type CardSummary } from "@/lib/creditCard";
-import { anchoredBalance, categoryInsight, net, periodBounds, totalIncome, totalSpent, within } from "@/lib/insights";
+import { anchoredBalance, budgetLeftLevel, budgetStatus, categoryInsight, net, periodBounds, totalIncome, totalSpent, within } from "@/lib/insights";
 import { dayBucket, dayMonth, daysLeftInMonth, plural, money, monthLabel } from "@/lib/format";
 
 const quickActions: { label: string; icon: typeof CirclePlus; href: string; accent?: boolean }[] = [
@@ -62,7 +62,7 @@ export default function Dashboard() {
     settings.balanceAsOf,
     monthStart,
   );
-  // Credit Card card: what's owed, shown on its own. Never subtracted from the balance above.
+  // Credit Card tile: what's owed, only once a card is set up. Never subtracted from the balance above.
   const card = settings.card ? cardSummary(transactions, transfers, settings.card, settings) : null;
   // One-time prompt for balances entered before the card model (unpaid card amount never entered).
   const askCardDue = needsCardDuePrompt(transactions, transfers, settings);
@@ -102,7 +102,7 @@ export default function Dashboard() {
               }`}
             >
               <Leaf className="size-4" aria-hidden />{" "}
-              {used < 0.85 ? "On track" : used <= 1 ? "Watch spend" : "Over budget"}
+              {budgetStatus(used)}
             </span>
           )}
         </div>
@@ -196,20 +196,21 @@ export default function Dashboard() {
                 )}
 
                 {/* Triad metrics: this month */}
-                <div className="grid grid-cols-3 gap-1 pt-1">
+                <div className={`grid gap-1 pt-1 ${card ? "grid-cols-2 @lg:grid-cols-4" : "grid-cols-3"}`}>
                   <Metric icon={ArrowDown} label="Income" value={`+${money(income)}`} tone="primary" />
                   <Metric icon={ArrowUp} label="Spent" value={`-${money(spent)}`} tone="secondary" />
                   <Metric
                     icon={PiggyBank}
                     label="Remaining"
                     value={limit > 0 ? `${toSpend < 0 ? "-" : ""}${money(toSpend)}` : "—"}
-                    tone={toSpend < 0 ? "secondary" : "neutral"}
+                    tone={{ ok: "neutral", low: "tertiary", over: "secondary" }[budgetLeftLevel(limit, spent)] as "neutral" | "tertiary" | "secondary"}
                     title={
                       limit > 0
                         ? `${money(limit)} monthly budget − ${money(spent)} spent this month`
                         : "Set a monthly budget to see how much is remaining"
                     }
                   />
+                  {card && <Metric icon={CreditCard} label="Credit Card" href="/card" {...cardTile(card)} />}
                 </div>
               </div>
             </section>
@@ -229,8 +230,6 @@ export default function Dashboard() {
               </Link>
             )}
 
-            {(card || cardDueNow > 0) && <CreditCardSummary card={card} dueNow={cardDueNow} />}
-
             {/* Monthly budget */}
             <section className="card p-6">
               <div className="mb-5 flex items-center justify-between">
@@ -241,7 +240,11 @@ export default function Dashboard() {
                   Monthly Budget
                 </h2>
                 {limit > 0 && (
-                  <span className="shrink-0 rounded-full bg-primary-fixed/50 px-3 py-1 text-sm font-semibold tabular-nums text-primary">
+                  <span
+                      className={`shrink-0 rounded-full px-3 py-1 text-sm font-semibold tabular-nums ${
+                        used < 0.85 ? "bg-primary-fixed/50 text-primary" : "bg-tertiary-fixed text-tertiary"
+                      }`}
+                    >
                     {Math.round(used * 100)}% used
                   </span>
                 )}
@@ -404,47 +407,26 @@ export default function Dashboard() {
   );
 }
 
-/** Overview "Credit Card" card: total owed on the card (or card credit), with the bill breakdown. Links to /card. */
-function CreditCardSummary({ card, dueNow }: { card: CardSummary | null; dueNow: number }) {
-  const credit = card?.credit ?? 0;
-  const owed = card ? Math.max(0, card.due) : dueNow;
-  const overdue = card?.overdue ?? false;
-
-  let detail: string;
-  if (!card) detail = "Set up your card to see bill dates";
-  else if (credit > 0) detail = "You've paid more than you owe";
-  else if (owed === 0) detail = "Nothing to pay";
-  else
-    detail = [
-      card.billOutstanding > 0
-        ? `Bill ${money(card.billOutstanding)} ${overdue ? "overdue since" : "due"} ${dayMonth(card.dueDate)}`
-        : null,
-      card.unbilled > 0 ? `Unbilled ${money(card.unbilled)}` : null,
-    ]
-      .filter(Boolean)
-      .join(" · ");
-
-  return (
-    <Link href="/card" className="card flex items-center gap-3 p-4 transition hover:bg-surface-container-low">
-      <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-surface-container">
-        <CreditCard className="size-5 text-primary" aria-hidden />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-xs font-medium text-on-surface-variant">
-          {credit > 0 ? "Credit Card · Card credit" : "Credit Card · You owe"}
-        </span>
-        <span
-          className={`block text-lg font-bold tabular-nums ${
-            overdue ? "text-secondary" : credit > 0 ? "text-primary" : "text-on-surface"
-          }`}
-        >
-          {money(credit > 0 ? credit : owed)}
-        </span>
-        <span className={`block text-xs tabular-nums ${overdue ? "text-secondary" : "text-on-surface-variant"}`}>{detail}</span>
-      </span>
-      <ChevronRight className="size-4 shrink-0 text-outline" aria-hidden />
-    </Link>
-  );
+/** Credit Card tile for the balance box: what's owed, or card credit. Hover text and the Credit Card screen have the detail. */
+function cardTile(card: CardSummary) {
+  const credit = card.credit;
+  const owed = Math.max(0, card.due);
+  const title =
+    credit > 0
+      ? "You've paid more than you owe"
+      : owed === 0
+        ? "Nothing to pay"
+        : [
+            card.billOutstanding > 0 ? `Bill ${money(card.billOutstanding)} ${card.overdue ? "overdue since" : "due"} ${dayMonth(card.dueDate)}` : null,
+            card.unbilled > 0 ? `Unbilled ${money(card.unbilled)}` : null,
+          ]
+            .filter(Boolean)
+            .join(" · ");
+  return {
+    value: money(credit > 0 ? credit : owed),
+    tone: (card.overdue ? "secondary" : credit > 0 ? "primary" : "neutral") as "secondary" | "primary" | "neutral",
+    title,
+  };
 }
 
 function Metric({
@@ -453,21 +435,34 @@ function Metric({
   value,
   tone,
   title,
+  href,
 }: {
   icon: typeof ArrowDown;
   label: string;
   value: string;
-  tone: "primary" | "secondary" | "neutral";
+  tone: "primary" | "secondary" | "tertiary" | "neutral";
   title?: string;
+  /** Makes the whole tile a link. */
+  href?: string;
 }) {
-  const color = { primary: "text-primary", secondary: "text-secondary", neutral: "text-on-surface" }[tone];
-  return (
-    <div title={title} className="flex flex-col justify-between rounded-lg bg-surface-container-low p-2.5">
+  const color = { primary: "text-primary", secondary: "text-secondary", tertiary: "text-tertiary", neutral: "text-on-surface" }[tone];
+  const box = "flex min-w-0 flex-col justify-between rounded-lg bg-surface-container-low p-2.5";
+  const content = (
+    <>
       <div className={`flex items-center gap-1 ${tone === "neutral" ? "text-on-surface-variant" : color}`}>
-        <Icon className="size-3.5" aria-hidden />
-        <span className="text-[11px] font-medium text-on-surface-variant">{label}</span>
+        <Icon className="size-3.5 shrink-0" aria-hidden />
+        <span className="truncate text-[11px] font-medium text-on-surface-variant">{label}</span>
       </div>
       <span className={`truncate pt-1 text-[13px] font-semibold tabular-nums @lg:text-lg ${color}`}>{value}</span>
+    </>
+  );
+  return href ? (
+    <Link href={href} title={title} className={`${box} transition hover:bg-surface-container`}>
+      {content}
+    </Link>
+  ) : (
+    <div title={title} className={box}>
+      {content}
     </div>
   );
 }

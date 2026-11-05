@@ -63,15 +63,26 @@ export function parseCardInput(body: Record<string, unknown>): Result<CardSettin
   return { ok: true, value };
 }
 
+export const MAX_DISMISSED_ALERTS = 200;
+
+/** POST /api/settings/alerts body: `{ keys: string[] }`, the reminders the user just removed. */
+export function parseDismissInput(body: Record<string, unknown>): Result<string[]> {
+  const keys = body.keys;
+  if (!Array.isArray(keys) || keys.length === 0 || keys.length > 100) return { ok: false, error: "Send between 1 and 100 reminders." };
+  if (!keys.every((k) => typeof k === "string" && /^[\w:.-]{1,120}$/.test(k))) return { ok: false, error: "Unknown reminder." };
+  return { ok: true, value: keys as string[] };
+}
+
 export type SettingsLean = {
   openingBalance?: number | null;
   balanceAsOf?: Date | null;
   cardDueAtAnchor?: number | null;
   card?: { statementDay: number; dueDay: number; limit?: number | null } | null;
+  dismissedAlerts?: string[];
   updatedAt?: Date;
 };
 
-/** Settings API payload: `{ openingBalance, balanceAsOf, cardDueAtAnchor, card }` (null defaults). */
+/** Settings API payload: `{ openingBalance, balanceAsOf, cardDueAtAnchor, card, dismissedAlerts }` (null defaults). */
 export function toSettingsDto(d: SettingsLean | null) {
   const openingBalance = d?.openingBalance ?? null;
   // Older docs have no balanceAsOf: the balance was entered when the doc was last saved.
@@ -85,5 +96,6 @@ export function toSettingsDto(d: SettingsLean | null) {
     // Docs saved before the card model have no value → null (the Overview asks once for the unpaid amount).
     cardDueAtAnchor: openingBalance === null ? null : (d?.cardDueAtAnchor ?? null),
     card,
+    dismissedAlerts: d?.dismissedAlerts ?? [],
   };
 }

@@ -85,19 +85,6 @@ function PickerSheet({
     ref.current?.showModal();
   }, []);
 
-  const today = startOfDay(now);
-  const isFuture = (d: Date) => startOfDay(d) > today;
-  const canNext = new Date(view.getFullYear(), view.getMonth() + 1, 1) <= today;
-
-  // Calendar grid for the viewed month, Monday-first, padded with blanks.
-  const first = new Date(view.getFullYear(), view.getMonth(), 1);
-  const daysInMonth = new Date(view.getFullYear(), view.getMonth() + 1, 0).getDate();
-  const lead = (first.getDay() + 6) % 7;
-  const cells: (Date | null)[] = [
-    ...Array<null>(lead).fill(null),
-    ...Array.from({ length: daysInMonth }, (_, i) => new Date(view.getFullYear(), view.getMonth(), i + 1)),
-  ];
-
   const pickDay = (d: Date) =>
     setDraft((prev) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), prev.getHours(), prev.getMinutes()));
 
@@ -157,55 +144,7 @@ function PickerSheet({
 
         {/* Calendar */}
         <div className="mt-3 rounded-xl bg-surface-container-low p-2">
-          <div className="mb-1 flex items-center justify-between">
-            <button
-              aria-label="Previous month"
-              onClick={() => setView(new Date(view.getFullYear(), view.getMonth() - 1, 1))}
-              className="rounded-full p-1.5 hover:bg-surface-container"
-            >
-              <ChevronLeft className="size-4" />
-            </button>
-            <span className="text-sm font-semibold">
-              {view.toLocaleDateString("en-IN", { month: "long", year: "numeric" })}
-            </span>
-            <button
-              aria-label="Next month"
-              disabled={!canNext}
-              onClick={() => setView(new Date(view.getFullYear(), view.getMonth() + 1, 1))}
-              className="rounded-full p-1.5 hover:bg-surface-container disabled:opacity-30"
-            >
-              <ChevronRight className="size-4" />
-            </button>
-          </div>
-          <div className="grid grid-cols-7 text-center">
-            {WEEKDAYS.map((w) => (
-              <span key={w} className="py-1 text-[10px] font-semibold text-on-surface-variant">
-                {w}
-              </span>
-            ))}
-            {cells.map((d, i) =>
-              d ? (
-                <button
-                  key={i}
-                  disabled={isFuture(d)}
-                  onClick={() => pickDay(d)}
-                  aria-pressed={sameDay(d, draft)}
-                  aria-label={d.toDateString()}
-                  className={`mx-auto my-px grid size-8 place-items-center rounded-full tabular-nums text-xs transition disabled:opacity-25 ${
-                    sameDay(d, draft)
-                      ? "bg-primary font-semibold text-on-primary"
-                      : sameDay(d, now)
-                        ? "font-semibold text-primary ring-1 ring-primary"
-                        : "hover:bg-surface-container"
-                  }`}
-                >
-                  {d.getDate()}
-                </button>
-              ) : (
-                <span key={i} />
-              ),
-            )}
-          </div>
+          <CalendarMonth view={view} onView={setView} onPick={pickDay} isSelected={(d) => sameDay(d, draft)} />
         </div>
 
         {/* Time */}
@@ -257,6 +196,87 @@ function PickerSheet({
         </div>
       </div>
     </dialog>
+  );
+}
+
+/** One month of days, Monday first, with month arrows. Future days are disabled. `band` shades a range behind the days. */
+export function CalendarMonth({
+  view,
+  onView,
+  onPick,
+  isSelected,
+  band,
+}: {
+  view: Date;
+  onView: (d: Date) => void;
+  onPick: (d: Date) => void;
+  isSelected: (d: Date) => boolean;
+  band?: (d: Date) => string;
+}) {
+  const now = new Date();
+  const today = startOfDay(now);
+  const canNext = new Date(view.getFullYear(), view.getMonth() + 1, 1) <= today;
+  const first = new Date(view.getFullYear(), view.getMonth(), 1);
+  const daysInMonth = new Date(view.getFullYear(), view.getMonth() + 1, 0).getDate();
+  const lead = (first.getDay() + 6) % 7;
+  const cells: (Date | null)[] = [
+    ...Array<null>(lead).fill(null),
+    ...Array.from({ length: daysInMonth }, (_, i) => new Date(view.getFullYear(), view.getMonth(), i + 1)),
+  ];
+  return (
+    <>
+      <div className="mb-1 flex items-center justify-between">
+        <button
+          type="button"
+          aria-label="Previous month"
+          onClick={() => onView(new Date(view.getFullYear(), view.getMonth() - 1, 1))}
+          className="rounded-full p-1.5 hover:bg-surface-container"
+        >
+          <ChevronLeft className="size-4" />
+        </button>
+        <span className="text-sm font-semibold">{view.toLocaleDateString("en-IN", { month: "long", year: "numeric" })}</span>
+        <button
+          type="button"
+          aria-label="Next month"
+          disabled={!canNext}
+          onClick={() => onView(new Date(view.getFullYear(), view.getMonth() + 1, 1))}
+          className="rounded-full p-1.5 hover:bg-surface-container disabled:opacity-30"
+        >
+          <ChevronRight className="size-4" />
+        </button>
+      </div>
+      <div className="grid grid-cols-7 text-center">
+        {WEEKDAYS.map((w) => (
+          <span key={w} className="py-1 text-[10px] font-semibold text-on-surface-variant">
+            {w}
+          </span>
+        ))}
+        {cells.map((d, i) =>
+          d ? (
+            <div key={i} className={`my-px ${band?.(d) ?? ""}`}>
+              <button
+                type="button"
+                disabled={d > today}
+                onClick={() => onPick(d)}
+                aria-pressed={isSelected(d)}
+                aria-label={d.toDateString()}
+                className={`mx-auto grid size-8 place-items-center rounded-full tabular-nums text-xs transition disabled:opacity-25 ${
+                  isSelected(d)
+                    ? "bg-primary font-semibold text-on-primary"
+                    : sameDay(d, now)
+                      ? "font-semibold text-primary ring-1 ring-primary"
+                      : "hover:bg-surface-container"
+                }`}
+              >
+                {d.getDate()}
+              </button>
+            </div>
+          ) : (
+            <span key={i} />
+          ),
+        )}
+      </div>
+    </>
   );
 }
 

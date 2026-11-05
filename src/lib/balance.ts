@@ -41,3 +41,13 @@ export function shortfall(
   const after = Math.round((available - outflow) * 100) / 100;
   return after < 0 ? { available, after } : null;
 }
+
+/**
+ * Budget still left this month that the available balance can't cover, or null. Compares what's left, not the whole
+ * limit: money already spent this month has already left the balance.
+ */
+export function budgetAboveBalance(limit: number, spent: number, available: number | null): number | null {
+  if (limit <= 0 || available === null) return null;
+  const left = Math.round((limit - spent) * 100) / 100;
+  return left > 0 && left > available ? left : null;
+}

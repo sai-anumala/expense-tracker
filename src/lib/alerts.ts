@@ -1,5 +1,5 @@
 // In-app reminders shown by the 🔔 bell and the Overview banner. Pure, client-safe; computed from loaded data.
-// Rules: AGENTS.md §11 "Reminders". Nothing is persisted (no read/unread state).
+// Rules: AGENTS.md §11 "Reminders". Only removed reminders are saved (Settings.dismissedAlerts).
 
 import { categoryInfo, type Budget, type CustomCategory, type Settings, type Transaction } from "./data";
 import type { Loan } from "./loans";
@@ -13,8 +13,10 @@ export type AlertSeverity = "urgent" | "warning" | "info";
 export type AlertIcon = "card" | "loan" | "budget" | "review";
 
 export type Alert = {
-  /** Stable id (same rule + record → same id), used as React key and for banner dismissal. */
+  /** Stable id (same rule + record → same id), used as React key. */
   id: string;
+  /** Identifies this occurrence. Removing a reminder hides this key only, so the next bill or month, or a more serious stage, still shows. */
+  dismissKey: string;
   severity: AlertSeverity;
   title: string;
   body: string;
@@ -37,6 +39,7 @@ const SEVERITY_RANK: Record<AlertSeverity, number> = { urgent: 0, warning: 1, in
 
 const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
 const daysBetween = (from: Date, to: Date) => Math.round((+startOfDay(to) - +startOfDay(from)) / 86_400_000);
+const dayKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const shortDate = (d: Date) => d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
 
 /** "today" / "tomorrow" / "in N days" (N ≥ 2). */
@@ -61,16 +64,21 @@ export type AlertInput = {
   settings: Pick<Settings, "balanceAsOf"> & Partial<Pick<Settings, "card" | "cardDueAtAnchor">>;
   /** Bank alerts from Gmail waiting for review. */
   pendingReview?: number;
+  /** When the newest of those arrived (ms): a newer one brings the removed reminder back. */
+  latestReviewAt?: number;
   /** Names for budgets on the user's own categories. */
   customCategories?: CustomCategory[];
   now?: Date;
 };
 
-function reviewAlerts({ pendingReview, now }: Required<AlertInput>): Alert[] {
+const REVIEW_KEY = "capture:pending:";
+
+function reviewAlerts({ pendingReview, latestReviewAt, now }: Required<AlertInput>): Alert[] {
   if (pendingReview <= 0) return [];
   return [
     {
       id: "capture:pending",
+      dismissKey: `${REVIEW_KEY}${latestReviewAt}`,
       severity: "info",
       title: pendingReview === 1 ? "1 bank alert to review" : `${pendingReview} bank alerts to review`,
       body: "From Gmail. They don't count in your totals until you add them.",
@@ -89,6 +97,7 @@ function cardAlerts({ transactions, transfers, settings, now }: Required<AlertIn
   if (s.billOutstanding > 0 && s.overdue) {
     out.push({
       id: "card:bill",
+      dismissKey: `card:bill:${dayKey(s.dueDate)}:urgent`,
       severity: "urgent",
       title: `Card bill ${money(s.billOutstanding)} overdue`,
       body: `It was due on ${shortDate(s.dueDate)}. Pay it to avoid late fees and interest.`,
@@ -99,6 +108,7 @@ function cardAlerts({ transactions, transfers, settings, now }: Required<AlertIn
   } else if (s.billOutstanding > 0 && s.daysToDue <= CARD_DUE_SOON_DAYS) {
     out.push({
       id: "card:bill",
+      dismissKey: `card:bill:${dayKey(s.dueDate)}:warning`,
       severity: "warning",
       title: `Card bill ${money(s.billOutstanding)} due ${inDays(s.daysToDue)}`,
       body: `Due on ${shortDate(s.dueDate)}. Record the payment as a transfer to your card.`,
@@ -110,6 +120,7 @@ function cardAlerts({ transactions, transfers, settings, now }: Required<AlertIn
   if (s.utilization !== null && s.utilization >= CARD_UTILIZATION_WARN && card.limit) {
     out.push({
       id: "card:utilization",
+      dismissKey: `card:utilization:${dayKey(s.nextStatement)}`,
       severity: "warning",
       title: `Card usage ${Math.floor(s.utilization * 100)}% of limit`,
       body: `${money(s.due)} used of your ${money(card.limit)} limit.`,
@@ -131,6 +142,7 @@ function loanAlerts({ loans, now }: Required<AlertInput>): Alert[] {
     if (st.overdue && l.dueDate) {
       out.push({
         id: `loan:${l.id}:overdue`,
+        dismissKey: `loan:${l.id}:overdue:${dayKey(new Date(l.dueDate))}`,
         severity: "urgent",
         title: `Loan ${lent ? "to" : "from"} ${l.person} overdue`,
         body: `${money(st.outstanding)} ${lent ? "still to collect" : "still to pay"} · was due on ${shortDate(new Date(l.dueDate))}.`,
@@ -147,6 +159,7 @@ function loanAlerts({ loans, now }: Required<AlertInput>): Alert[] {
         const amount = Math.min(l.monthlyPayment, st.outstanding);
         out.push({
           id: `loan:${l.id}:next`,
+          dismissKey: `loan:${l.id}:next:${dayKey(next)}`,
           severity: "warning",
           title: lent
             ? `Collect ${money(amount)} from ${l.person} ${onDay(next, now)}`
@@ -170,6 +183,7 @@ function budgetAlert(id: string, name: string, spent: number, limit: number, mon
   if (used >= 1) {
     return {
       id,
+      dismissKey: `${id}:${dayKey(monthEnd)}:urgent`,
       severity: "urgent",
       title: over > 0 ? `Over ${name} by ${money(over)}` : `${name[0].toUpperCase()}${name.slice(1)} fully used`,
       body,
@@ -180,6 +194,7 @@ function budgetAlert(id: string, name: string, spent: number, limit: number, mon
   }
   return {
     id,
+    dismissKey: `${id}:${dayKey(monthEnd)}:warning`,
     severity: "warning",
     title: `${name[0].toUpperCase()}${name.slice(1)} ${Math.floor(used * 100)}% used`,
     body,
@@ -211,6 +226,7 @@ export function buildAlerts(input: AlertInput): Alert[] {
   const full: Required<AlertInput> = {
     ...input,
     pendingReview: input.pendingReview ?? 0,
+    latestReviewAt: input.latestReviewAt ?? 0,
     now: input.now ?? new Date(),
     customCategories: input.customCategories ?? [],
   };
@@ -219,6 +235,18 @@ export function buildAlerts(input: AlertInput): Alert[] {
     .map((a, i) => ({ a, i }))
     .sort((x, y) => SEVERITY_RANK[x.a.severity] - SEVERITY_RANK[y.a.severity] || x.a.at - y.a.at || x.i - y.i)
     .map(({ a }) => a);
+}
+
+/**
+ * Reminders the user hasn't removed. Bank alerts are compared by time: reviewing the newest one mustn't bring back
+ * a reminder they removed, only a newer alert arriving should.
+ */
+export function activeAlerts(alerts: Alert[], dismissed: string[]) {
+  const removed = new Set(dismissed);
+  const reviewedUpTo = Math.max(0, ...dismissed.filter((k) => k.startsWith(REVIEW_KEY)).map((k) => Number(k.slice(REVIEW_KEY.length)) || 0));
+  return alerts.filter((a) =>
+    a.dismissKey.startsWith(REVIEW_KEY) ? Number(a.dismissKey.slice(REVIEW_KEY.length)) > reviewedUpTo : !removed.has(a.dismissKey),
+  );
 }
 
 /** Alerts that count towards the bell badge (urgent + warning). */

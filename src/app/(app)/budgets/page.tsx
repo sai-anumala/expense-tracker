@@ -6,7 +6,7 @@ import { SlidersHorizontal, CircleCheck, Plus, PieChart, Trash2, Pencil } from "
 import { AmountForm } from "@/components/AmountForm";
 import { SwipeActions } from "@/components/SwipeActions";
 import { BalanceNotice } from "@/components/BalanceNotice";
-import { availableBalance } from "@/lib/balance";
+import { availableBalance, budgetAboveBalance } from "@/lib/balance";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { errorMessage } from "@/lib/store";
 import { AppHeader, IconTile, MonthPill, PageColumns, ProgressBar, RowHint } from "@/components/ui";
@@ -16,7 +16,7 @@ import { EmptyState } from "@/components/TransactionRow";
 import { pickableCategories, type CategoryId } from "@/lib/data";
 import { MAX_CATEGORY_NAME, MAX_CUSTOM_CATEGORIES, normalizeCategoryName } from "@/lib/categoryRules";
 import { useAppData } from "@/lib/store";
-import { periodBounds, spentByCategory, totalSpent, within } from "@/lib/insights";
+import { budgetLeftLevel, budgetStatus, periodBounds, spentByCategory, totalSpent, within } from "@/lib/insights";
 import { daysLeftInMonth, money, moneySigned, monthLabel, plural } from "@/lib/format";
 
 function status(ratio: number) {
@@ -41,9 +41,14 @@ export default function Budgets() {
   const limit = budget.monthlyLimit;
   const remaining = limit - spent;
   const daysLeft = daysLeftInMonth();
+  const leftLevel = budgetLeftLevel(limit, spent);
+  const leftColor = { ok: "text-primary", low: "text-tertiary", over: "text-secondary" }[leftLevel];
+  // Low but below the "Watch spend" point: state the fact, since "On track" under an amber figure would read oddly.
+  const leftNote =
+    leftLevel === "low" && spent / limit < 0.85 ? `${Math.floor((remaining / limit) * 100)}% left` : budgetStatus(limit > 0 ? spent / limit : 0);
   // Informational checks (never block saving).
   const available = availableBalance(transactions, transfers, loans, settings);
-  const budgetAboveBalance = limit > 0 && available !== null && limit > available;
+  const uncovered = budgetAboveBalance(limit, spent, available);
   const categoryTotal = budget.categories.reduce((s, c) => s + c.limit, 0);
   const categoriesAboveLimit = limit > 0 && categoryTotal > limit;
   const list = useViewAll(budget.categories);
@@ -130,13 +135,11 @@ export default function Budgets() {
                 <p className="flex items-center gap-2 text-sm text-on-surface-variant">
                   <span className="size-2 rounded-full bg-surface-dim" /> Remaining
                 </p>
-                <p className={`mt-1 tabular-nums text-xl font-semibold ${remaining < 0 ? "text-secondary" : "text-primary"}`}>
+                <p className={`mt-1 tabular-nums text-xl font-semibold ${leftColor}`}>
                   {limit > 0 ? `${remaining < 0 ? "-" : ""}${money(remaining)}` : "—"}
                 </p>
                 {limit > 0 && (
-                  <p className={`text-xs ${remaining < 0 ? "text-secondary" : "text-primary"}`}>
-                    {remaining < 0 ? "Over budget" : "Safe pacing"}
-                  </p>
+                  <p className={`text-xs ${leftColor}`}>{leftNote}</p>
                 )}
               </div>
             </div>
@@ -145,20 +148,19 @@ export default function Budgets() {
                 <div className="mt-5">
                   <ProgressBar value={spent / limit} tone={spent / limit < 0.9 ? "primary" : "tertiary"} />
                 </div>
-                <div className="mt-3 flex items-center justify-between text-sm">
-                  <span className="flex items-center gap-2 text-on-surface-variant">
-                    <CircleCheck className="size-4 text-primary" aria-hidden />
-                    {money(Math.max(0, remaining) / daysLeft)} safe daily budget
-                  </span>
-                  <span className="tabular-nums">{Math.round((spent / limit) * 100)}% Spent</span>
-                </div>
+                {remaining > 0 && (
+                  <p className="mt-3 flex items-center gap-2 text-sm tabular-nums text-on-surface-variant">
+                    <CircleCheck className="size-4 shrink-0 text-primary" aria-hidden />
+                    {money(remaining / daysLeft)} a day stays within budget
+                  </p>
+                )}
               </>
             )}
-            {budgetAboveBalance && available !== null && (
+            {uncovered !== null && available !== null && (
               <div className="mt-4">
                 <BalanceNotice tone="info">
-                  Your monthly budget (<b className="tabular-nums">{money(limit)}</b>) is more than your available balance (
-                  <b className="tabular-nums">{moneySigned(available)}</b>). Make sure money is coming in before you spend it all.
+                  You have <b className="tabular-nums">{money(uncovered)}</b> of budget left this month, but your available balance is{" "}
+                  <b className="tabular-nums">{moneySigned(available)}</b>. To spend it all, you&apos;ll need more money coming in.
                 </BalanceNotice>
               </div>
             )}

@@ -32,6 +32,25 @@ function localDay(value: string, plusDays = 0) {
   return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]) + plusDays);
 }
 
+export const dayFromValue = (value: string) => localDay(value);
+
+export const dayToValue = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+/** "1 Oct – 6 Nov 2026", "1 Dec 2025 – 6 Jan 2026", "6 Nov 2026", "From 1 Oct 2026"; "" when no dates are set. */
+export function dateRangeLabel(from: string, to: string) {
+  const a = localDay(from);
+  const b = localDay(to);
+  const long = (d: Date) => d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+  if (a && b) {
+    if (from === to) return long(a);
+    const start = a.getFullYear() === b.getFullYear() ? a.toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : long(a);
+    return `${start} – ${long(b)}`;
+  }
+  if (a) return `From ${long(a)}`;
+  return b ? `Until ${long(b)}` : "";
+}
+
 /** [start, end) of the chosen dates; null means open-ended. A reversed custom range is read the right way round. */
 export function periodRange(f: Pick<TxFilters, "period" | "from" | "to">, now = new Date()): [Date | null, Date | null] {
   const y = now.getFullYear();

@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Bell, CheckCircle2, CreditCard, HandCoins, Inbox, PieChart, type LucideIcon } from "lucide-react";
+import { Bell, CheckCircle2, CreditCard, HandCoins, Inbox, PieChart, X, type LucideIcon } from "lucide-react";
 import { useAppData } from "@/lib/store";
-import { buildAlerts, isAttention, type Alert, type AlertIcon, type AlertSeverity } from "@/lib/alerts";
+import { activeAlerts, buildAlerts, isAttention, type Alert, type AlertIcon, type AlertSeverity } from "@/lib/alerts";
 
 export const alertIcons: Record<AlertIcon, LucideIcon> = { card: CreditCard, loan: HandCoins, budget: PieChart, review: Inbox };
 
@@ -14,19 +14,22 @@ export const severityTile: Record<AlertSeverity, string> = {
   info: "bg-surface-container-high text-on-surface",
 };
 
-/** Current reminders from the signed-in user's data (recomputed when the data changes). */
+/** Current reminders from the signed-in user's data, minus the ones they removed (recomputed when the data changes). */
 export function useAlerts(): Alert[] {
   const { transactions, transfers, loans, budget, settings, captured, customCategories } = useAppData();
   const pendingReview = captured.length;
+  const latestReviewAt = captured.reduce((latest, c) => Math.max(latest, +new Date(c.receivedAt)), 0);
+  const dismissed = settings.dismissedAlerts;
   return useMemo(
-    () => buildAlerts({ transactions, transfers, loans, budget, settings, pendingReview, customCategories }),
-    [transactions, transfers, loans, budget, settings, pendingReview, customCategories],
+    () => activeAlerts(buildAlerts({ transactions, transfers, loans, budget, settings, pendingReview, latestReviewAt, customCategories }), dismissed),
+    [transactions, transfers, loans, budget, settings, pendingReview, latestReviewAt, customCategories, dismissed],
   );
 }
 
 /** 🔔 in the header: badge = number of urgent + warning reminders; opens a panel listing them. */
 export function NotificationBell() {
   const alerts = useAlerts();
+  const { dismissAlerts } = useAppData();
   const count = alerts.filter(isAttention).length;
   const urgent = alerts.some((a) => a.severity === "urgent");
   const [open, setOpen] = useState(false);
@@ -72,9 +75,20 @@ export function NotificationBell() {
           aria-label="Notifications"
           className="absolute top-12 -right-14 z-40 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-xl bg-surface-container-lowest shadow-xl ring-1 ring-surface-container-high motion-safe:animate-[ledgerly-fade-in_0.15s_ease-out]"
         >
-          <div className="flex items-center justify-between border-b border-surface-container px-4 py-3">
-            <p className="font-semibold">Reminders</p>
-            {count > 0 && <span className="text-sm text-on-surface-variant">{count} need attention</span>}
+          <div className="flex items-center justify-between gap-2 border-b border-surface-container px-4 py-3">
+            <p className="font-semibold">
+              Reminders
+              {count > 0 && <span className="ml-2 text-sm font-normal text-on-surface-variant">{count} need attention</span>}
+            </p>
+            {alerts.length > 0 && (
+              <button
+                type="button"
+                onClick={() => dismissAlerts(alerts.map((a) => a.dismissKey))}
+                className="-mr-2 shrink-0 rounded-full px-2 py-1 text-sm font-medium text-primary hover:bg-surface-container"
+              >
+                Clear all
+              </button>
+            )}
           </div>
           {alerts.length === 0 ? (
             <p className="flex items-center gap-2 px-4 py-6 text-on-surface-variant">
@@ -83,8 +97,16 @@ export function NotificationBell() {
           ) : (
             <ul className="max-h-[min(24rem,70vh)] divide-y divide-surface-container overflow-y-auto">
               {alerts.map((a) => (
-                <li key={a.id}>
+                <li key={a.dismissKey} className="flex items-start">
                   <AlertLink alert={a} onNavigate={() => setOpen(false)} />
+                  <button
+                    type="button"
+                    aria-label={`Remove reminder: ${a.title}`}
+                    onClick={() => dismissAlerts([a.dismissKey])}
+                    className="mt-2 mr-2 grid size-8 shrink-0 place-items-center rounded-full text-on-surface-variant hover:bg-surface-container"
+                  >
+                    <X className="size-4" aria-hidden />
+                  </button>
                 </li>
               ))}
             </ul>
@@ -98,7 +120,7 @@ export function NotificationBell() {
 function AlertLink({ alert: a, onNavigate }: { alert: Alert; onNavigate: () => void }) {
   const Icon = alertIcons[a.icon];
   return (
-    <Link href={a.href} onClick={onNavigate} className="flex items-start gap-3 px-4 py-3 hover:bg-surface-container-low">
+    <Link href={a.href} onClick={onNavigate} className="flex min-w-0 flex-1 items-start gap-3 py-3 pr-1 pl-4 hover:bg-surface-container-low">
       <span className={`mt-0.5 grid size-9 shrink-0 place-items-center rounded-full ${severityTile[a.severity]}`}>
         <Icon className="size-4" aria-hidden />
       </span>

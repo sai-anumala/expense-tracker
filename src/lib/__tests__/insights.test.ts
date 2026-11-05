@@ -10,6 +10,8 @@ import {
   totalSpent,
   weeklySpend,
   within,
+  budgetLeftLevel,
+  budgetStatus,
 } from "../insights";
 import { iso, local, tx } from "./fixtures";
 
@@ -225,5 +227,28 @@ describe("anchoredBalance (AGENTS.md §11)", () => {
   it("entered 0 is a real balance (not 'not set')", () => {
     const r = anchoredBalance([tx(-10, iso(2026, 11, 3))], 0, iso(2026, 11, 2), monthStart);
     expect(r).toMatchObject({ balance: -10, base: 0 });
+  });
+});
+
+describe("budgetStatus", () => {
+  it("follows the Overview pill rule", () => {
+    expect(budgetStatus(0)).toBe("On track");
+    expect(budgetStatus(0.849)).toBe("On track");
+    expect(budgetStatus(0.85)).toBe("Watch spend");
+    expect(budgetStatus(1)).toBe("Watch spend");
+    expect(budgetStatus(1.01)).toBe("Over budget");
+  });
+});
+
+describe("budgetLeftLevel", () => {
+  it("turns low under 30% left and over past the limit", () => {
+    expect(budgetLeftLevel(1000, 0)).toBe("ok");
+    expect(budgetLeftLevel(1000, 700)).toBe("ok"); // exactly 30% left isn't under 30%
+    expect(budgetLeftLevel(1000, 700.5)).toBe("low");
+    expect(budgetLeftLevel(1000, 1000)).toBe("low");
+    expect(budgetLeftLevel(1000, 1000.5)).toBe("over");
+  });
+  it("is calm with no budget set", () => {
+    expect(budgetLeftLevel(0, 500)).toBe("ok");
   });
 });

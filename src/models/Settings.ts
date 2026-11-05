@@ -26,6 +26,8 @@ const SettingsSchema = new Schema(
     cardDueAtAnchor: { type: Number, default: null, min: 0 },
     /** Credit card setup; null = not set up. Saved separately (does not re-anchor the balance). */
     card: { type: CardSchema, default: null },
+    /** Reminders the user removed (Alert.dismissKey), newest last; capped by the API. */
+    dismissedAlerts: { type: [String], default: [] },
   },
   { timestamps: true, strict: "throw" },
 );

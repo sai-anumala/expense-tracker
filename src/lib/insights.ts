@@ -34,6 +34,20 @@ export const totalIncome = (list: Transaction[]) =>
 /** Sum of signed amounts (works for transactions and loan cash events). */
 export const net = (list: { amount: number }[]) => list.reduce((s, t) => s + t.amount, 0);
 
+/** How the monthly budget is going, from the share used. One rule for Overview and Budgets. */
+export const budgetStatus = (used: number) => (used < 0.85 ? "On track" : used <= 1 ? "Watch spend" : "Over budget");
+
+/** Share of the budget left below which the Remaining figure turns amber. */
+export const BUDGET_LOW_LEFT = 0.3;
+
+/** How much of the monthly budget is left: drives the colour of the Remaining figure. */
+export function budgetLeftLevel(limit: number, spent: number): "ok" | "low" | "over" {
+  if (limit <= 0) return "ok";
+  const left = limit - spent;
+  if (left < 0) return "over";
+  return left / limit < BUDGET_LOW_LEFT ? "low" : "ok";
+}
+
 export function spentByCategory(list: Transaction[]) {
   const map = new Map<CategoryId, number>();
   for (const t of expenses(list)) map.set(t.category, (map.get(t.category) ?? 0) + -t.amount);

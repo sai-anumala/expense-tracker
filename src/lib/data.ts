@@ -139,6 +139,8 @@ export type Settings = {
   cardDueAtAnchor: number | null;
   /** The user's single credit card setup (statement/due day, optional limit); null = not set up. */
   card: CardSettings | null;
+  /** Reminders the user removed; see Alert.dismissKey. */
+  dismissedAlerts: string[];
 };
 
-export const emptySettings: Settings = { openingBalance: null, balanceAsOf: null, cardDueAtAnchor: null, card: null };
+export const emptySettings: Settings = { openingBalance: null, balanceAsOf: null, cardDueAtAnchor: null, card: null, dismissedAlerts: [] };
