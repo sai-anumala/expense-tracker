@@ -7,15 +7,16 @@ A mobile-first, fully responsive expense tracker built with **Next.js 15 (App Ro
 ## Features
 
 - **Accounts** — anyone can sign up with email + password; each user sees only their own transactions, budget and balance
-- **Overview** — total available balance (Bank + UPI + Cash: opening balance + income − cash spending) with monthly growth, an "after card dues" line, this month's Income / Spent / To Spend, budget pacing, recent transactions
+- **Overview** — total available balance (Bank + UPI + Cash: opening balance + income − cash spending) with monthly growth, this month's Income / Spent / Remaining plus a Credit Card tile once a card is set up, budget pacing, recent transactions
 - **Add / edit transactions** — expense or income, category, date & time picker, payment method; edits and deletes require confirmation
 - **Budgets** — overall monthly limit and per-category limits
+- **Your categories** — name "Other" to create your own category, usable in budgets and analytics; rename or delete it on its own page
 - **Analytics** — week / month / year totals vs previous period, category breakdown, top merchants, 4-week trend, CSV export
 - **Loans** — track money lent to / borrowed from friends, relatives, apps and banks; partial or full repayments, optional interest, due date and monthly plan (affects balance, never income or spending)
 - **Transfers** — move money between your own Bank, UPI, Cash and Credit Card (ATM withdrawals, card bill payments); never income or spending. Only card bill payments (lower) and card cash withdrawals (raise) change the balance
 - **Credit card** — one card with statement day, due day and optional limit: bill to pay, unbilled amount, due date, utilization, Pay bill. Card purchases count as spending but don't reduce your balance until you pay the bill
 - **All Transactions** — full history (transactions and transfers) with search, filters and paging
-- **Reminders** — the 🔔 bell lists card bills due soon / overdue, high card usage, upcoming or overdue loan payments and budgets ≥ 90% used; the most important one also shows as a dismissible banner on the Overview (in-app only)
+- **Reminders** — the 🔔 bell lists card bills due soon / overdue, high card usage, upcoming or overdue loan payments and budgets ≥ 90% used; the most important one also shows as a banner on the Overview. Reminders can be removed one by one or with Clear all (in-app only)
 - Amounts in **INR (₹)** with Indian digit grouping
 
 ## Getting started
@@ -48,6 +49,8 @@ Check the connection at `GET /api/health`.
 | GET / PUT | `/api/budget` | Monthly and category limits |
 | GET / PUT | `/api/settings` | Balance + unpaid credit card amount |
 | PUT | `/api/settings/card` | Credit card setup `{statementDay, dueDay, limit?}` or `{card: null}` |
+| POST | `/api/settings/alerts` | Remember removed reminders `{keys}` |
+| GET / POST · PUT / DELETE | `/api/categories` · `/api/categories/:id` | The user's own categories `{name}` |
 | GET / POST · PUT / DELETE | `/api/loans` · `/api/loans/:id` | Loans |
 | POST · DELETE | `/api/loans/:id/payments` · `…/payments/:paymentId` | Record / undo a repayment |
 | GET / POST · PUT / DELETE | `/api/transfers` · `/api/transfers/:id` | Transfers between own accounts `{from, to, amount, date, note?}` |
@@ -62,7 +65,7 @@ src/
   app/            pages (/, /add, /budgets, /analytics, /transactions, /categories, /loans, /transfer, /card) and API routes
   components/     UI pieces (date picker, confirm dialog, amount form, nav)
   lib/            store (client data), db connection, validation, formatting, insights
-  models/         Mongoose models: User, Transaction, Budget, Settings, Loan, Transfer
+  models/         Mongoose models: User, Transaction, CustomCategory, Budget, Settings, Loan, Transfer, CaptureToken, CapturedTransaction, RateLimit
   middleware.ts   redirects signed-out visitors to /login
 design/           Stitch screenshots and DESIGN.md
 ```

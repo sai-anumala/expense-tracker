@@ -42,7 +42,7 @@ Last updated: 2026-11-06 · Branch model: `develop` → `main` · Live: <https:/
 - **Credit card** (one card): statement day, due day, optional limit; bill to pay, unbilled amount, due date, utilization. Card purchases count as spending but don't reduce the available balance until the bill is paid
 - **Gmail auto-capture** (optional): a script in the user's own Google account sends bank alert emails to a **To review** list; nothing counts until the user adds it
 
-Screens: Overview (dashboard), Add/Edit Transaction, Budgets, Analytics, Loans (list, new/edit, detail), Transfer (form + history), Credit Card, All Transactions (via "View All"), To review, Gmail auto-capture, Login, Sign up.
+Screens: Overview (dashboard), Add/Edit Transaction, Budgets, Analytics, Loans (list, new/edit, detail), Transfer (form + history), Credit Card, All Transactions (via "View All"), Your categories, To review, Gmail auto-capture, Login, Sign up.
 Currency: **INR (₹)** with Indian digit grouping. UI derived from a Google Stitch design (see [§13](#13-design-system)).
 
 There is **no mock or sample data** anywhere: every number comes from the signed-in user's MongoDB data.
@@ -147,7 +147,8 @@ App Router
                                 loans, addLoan, updateLoan, removeLoan, addPayment, removePayment,
                                 transfers, addTransfer, updateTransfer, removeTransfer,
                                 captured, confirmCaptured, dismissCaptured,
-                                getCaptureStatus, createCaptureToken, revokeCaptureToken }
+                                getCaptureStatus, createCaptureToken, revokeCaptureToken,
+                                customCategories, categoryOf, ensureCategory, renameCategory, dismissAlerts, … }
         pages compute all metrics client-side from that data (src/lib/insights.ts)
   ▼
 API route handlers (Node runtime, src/app/api/**)
@@ -180,6 +181,7 @@ src/
 │  ├─ (app)/budgets/page.tsx     Monthly limit + category budgets CRUD
 │  ├─ (app)/analytics/page.tsx   Week/Month/Year analytics, donut, weekly bars, top merchants, CSV export
 │  ├─ (app)/transactions/page.tsx  All Transactions: search, filters, 10 per page (reached via "View All"; /accounts redirects here)
+│  ├─ (app)/categories/page.tsx  Your categories: add, rename, delete
 │  ├─ (app)/loans/page.tsx       Loans tab: You'll get / You owe, I lent / I borrowed buttons, Open/Settled lists
 │  ├─ (app)/loans/new/page.tsx   Create or edit (`?id=`) a loan; `?dir=lent|borrowed` preselect
 │  ├─ (app)/transfer/page.tsx    Transfer form (From/To chips, amount, date, note; `?id=` edit; `?from=&to=&amount=` prefill) + bill-payment low-balance warning + this-month summary + history
@@ -196,13 +198,19 @@ src/
 │     ├─ budget/route.ts         GET, PUT (replace whole budget)
 │     ├─ settings/route.ts       GET, PUT (balance + unpaid card amount; re-anchors)
 │     ├─ settings/card/route.ts  PUT card setup `{statementDay, dueDay, limit?}` or `{card: null}` (no re-anchor)
+│     ├─ settings/alerts/route.ts  POST remember removed reminders `{keys}`
+│     ├─ categories/route.ts     GET list, POST create or reuse · categories/[id]/route.ts PUT rename, DELETE (expenses move to Other)
 │     ├─ loans/route.ts · loans/[id] · loans/[id]/payments · loans/[id]/payments/[paymentId]
 │     ├─ transfers/route.ts      GET list, POST create · transfers/[id]/route.ts PUT update, DELETE
 │     ├─ capture/email/route.ts  POST a bank alert from the Gmail script (public in middleware; own token auth)
 │     ├─ capture/token/route.ts  GET status, POST create/replace, DELETE revoke
 │     └─ captured/route.ts       GET review list · captured/[id] DELETE dismiss · captured/[id]/confirm POST
 ├─ components/
-│  ├─ ui.tsx                     AppHeader (logo, NotificationBell, UserMenu; + OverviewAlertBanner below the header on "/"), Logo, IconTile, MonthPill [no-op], ProgressBar, SectionTitle
+│  ├─ ui.tsx                     AppHeader (logo, NotificationBell, UserMenu; + OverviewAlertBanner below the header on "/"), SubHeader, PageColumns, RowHint, Logo, IconTile, MonthPill [no-op], ProgressBar, SectionTitle
+│  ├─ ViewAll.tsx                useViewAll + ViewAllButton: lists show LIST_LIMIT (5), then View all / Show less
+│  ├─ Pagination.tsx             Previous / Page N of M / Next (All Transactions)
+│  ├─ DateRangePicker.tsx        DateRangeField + DateRangeDialog: custom date range calendar
+│  ├─ CategoryPicker.tsx         Category grid with Show more and "Name this category" under Other; namedCategory()
 │  ├─ NotificationBell.tsx       🔔 with urgent+warning count badge → reminders panel (outside click / Esc closes); useAlerts(), alertIcons, severityTile
 │  ├─ AlertBanner.tsx            Slim dismissible banner with the top urgent/warning reminder; OverviewAlertBanner shows it only on "/"
 │  ├─ BottomNav.tsx              Bottom nav on phones (Overview, Analytics, [+], Budgets, Loans); TabPage wrapper
@@ -214,7 +222,7 @@ src/
 │  ├─ BalanceForm.tsx            Overview balance entry: Bank + UPI + cash (required) + unpaid credit card amount (optional, empty = 0)
 │  ├─ ConfirmDialog.tsx          <dialog> Yes/Cancel modal (danger variant, busy state)
 │  ├─ DateTimePicker.tsx         Field + compact centered calendar/time pop-up; formatWhen(); future dates disabled
-│  ├─ AuthForm.tsx               Login/Signup form; safeNext() prevents open redirects
+│  ├─ AuthForm.tsx               Login/Signup form; uses safeNext() from lib/safeNext.ts
 │  ├─ Splash.tsx                 Launch splash (logo pop, ring pulse, name + tagline, progress line)
 │  ├─ BalanceNotice.tsx          Non-blocking warn/info notice + ShortfallText wording
 │  ├─ ChangePasswordDialog.tsx   Centered <dialog>: current / new / confirm password, show-hide, inline errors, success state
@@ -245,8 +253,12 @@ src/
 │  ├─ captureMatch.ts            (pure) CapturedItem type, suggestCategory, possibleDuplicate
 │  ├─ deadline.ts                (pure) withDeadline: give up on a promise after a time limit
 │  ├─ captureToken.ts (server)   generateCaptureToken, hashCaptureToken, bearerToken, captureDedupeKey, toCapturedDto
-│  └─ gmailScript.ts             (pure) buildGmailScript: the Apps Script text with the user's URL and token
-└─ models/  defineModel.ts (dev-safe registration) · User.ts · Transaction.ts · Budget.ts · Settings.ts · Loan.ts · Transfer.ts · RateLimit.ts · CaptureToken.ts · CapturedTransaction.ts
+│  ├─ gmailScript.ts             (pure) buildGmailScript: the Apps Script text with the user's URL and token
+│  ├─ categoryRules.ts           (pure) custom:<id> format, name rules, MAX_CUSTOM_CATEGORIES; used by models, routes and screens
+│  ├─ categoryAccess.ts (server) ownsCategories (a custom id must be this user's), customCategoryId, toCustomCategoryDto
+│  ├─ transactionFilters.ts      (pure) All Transactions: filterFeed, feedTotals, pageOf, periodRange, filters ↔ URL
+│  └─ safeNext.ts                (pure) only allows a post-login redirect that stays on this site
+└─ models/  defineModel.ts (dev-safe registration) · User.ts · Transaction.ts · CustomCategory.ts · Budget.ts · Settings.ts · Loan.ts · Transfer.ts · RateLimit.ts · CaptureToken.ts · CapturedTransaction.ts
 src/lib/__tests__/  Vitest unit tests (<module>.test.ts) + fixtures.ts builders (see §16)
 test/        Vitest setup.ts (TZ, no DB) and server-only-stub.ts · vitest.config.mts at the repo root
 design/      Stitch screenshots (dashboard/add/budget/analytics.png) + DESIGN.md (design system spec)
@@ -385,7 +397,7 @@ All bodies are JSON objects; non-object or invalid JSON → **400**. Mongoose `V
 | `DELETE /api/transactions/:id` | session | – | 200 `{id}` | 404 not found / not owned |
 | `GET /api/budget` | session | – | `{monthlyLimit, categories[]}` (defaults if none) | – |
 | `PUT /api/budget` | session | full budget (replaces) | 200 budget | 400 limits/duplicates |
-| `GET /api/settings` | session | – | `{openingBalance, balanceAsOf, cardDueAtAnchor, card}` (ISO / null defaults) | – |
+| `GET /api/settings` | session | – | `{openingBalance, balanceAsOf, cardDueAtAnchor, card, dismissedAlerts}` (ISO / null / empty defaults) | – |
 | `PUT /api/settings` | session | `{openingBalance: number ≥ 0 \| null, cardDueAtAnchor?: number ≥ 0}` | 200 settings; server sets `balanceAsOf` = now (to the minute) and `cardDueAtAnchor` = given or **0**; both null when clearing the balance. `card` untouched | 400 "Opening balance must be 0 or more." / "Unpaid credit card amount must be 0 or more." / too large |
 | `PUT /api/settings/card` | session | `{statementDay, dueDay, limit?}` or `{card: null}` (remove) | 200 full settings; balance and `balanceAsOf` untouched | 400 "Statement day / Due day must be a whole day between 1 and 28.", "Due day must be different from the statement day.", "Credit limit must be more than zero (or leave it empty).", "Credit limit is too large." |
 
@@ -462,7 +474,7 @@ All computed client-side in pages using `lib/insights.ts`. "This month" = local 
 | Metric | Formula |
 |---|---|
 | **Total Available Balance** (Bank + UPI + Cash) | `entered balance + Σ income − Σ expenses (excluding account "Credit Card") − card bill payments + card cash withdrawals + loan cash` **counting only events with `date ≥ balanceAsOf`**. Input = `availableCashEvents(transactions, transfers, loans)` (`lib/creditCard.ts`) into `anchoredBalance()` (`lib/insights.ts`). Loan cash (`loanCashEvents`): lending −amount, repayment received +; borrowing +amount, repayment made −. Events dated earlier are ignored (they're already in the amount the user typed) |
-| **Credit Card tile** (fourth tile in the balance card, links to `/card`) | Shown **only when a card is set up**; hidden otherwise, even if an unpaid amount was entered. Bill and unbilled detail is in its hover text and on `/card`. Value = `cardSummary().due` ("You owe"), or `credit` ("Card credit") when overpaid; **never subtracted from the balance**. Detail: "Bill ₹billOutstanding due d MMM · Unbilled ₹unbilled" (zero parts omitted), red "overdue since" when overdue, "Nothing to pay" at 0, "Set up your card to see bill dates" without a card. Links to `/card` |
+| **Credit Card tile** (fourth tile in the balance card, links to `/card`) | Shown **only when a card is set up**; hidden otherwise, even if an unpaid amount was entered. Bill and unbilled detail is in its hover text and on `/card`. Value = `cardSummary().due` ("You owe"), or `credit` ("Card credit") when overpaid; **never subtracted from the balance**. Detail: "Bill ₹billOutstanding due d MMM · Unbilled ₹unbilled" (zero parts omitted), red "overdue since" when overdue, "Nothing to pay" at 0 |
 | **±x% this mo** badge | `(balance − base) / base × 100`. `base` = entered balance if `balanceAsOf` is this month, else entered + net of transactions in `[balanceAsOf, 1st)`. Never uses transactions before the anchor. Hidden if `base ≤ 0` or \|x\| < 0.05 |
 | **Income** tile | Σ income this month |
 | **Spent** tile | Σ expenses this month (shown as −₹) |
@@ -533,7 +545,7 @@ Gmail only: no SMS and no inbound email service. A Google Apps Script in the use
 - Open list order: overdue first, then nearest next payment / due date, then newest.
 
 ### Transfers (own accounts; `lib/transfers.ts`)
-- **One-total model:** a transfer records that money moved (Bank/UPI/Cash/Credit Card) and is **never income or spending**: excluded from Income/Spent/Remaining tiles, budgets, analytics + its CSV, Accounts per-method totals. No per-account balances. Bank/UPI/Cash ↔ each other: **no effect** on Total Available Balance. Under the card model (`transferCashEffect`): **X → card** (bill payment) −amount, **card → X** (cash withdrawal) +amount.
+- **One-total model:** a transfer records that money moved (Bank/UPI/Cash/Credit Card) and is **never income or spending**: excluded from Income/Spent/Remaining tiles, budgets, analytics + its CSV, and the All Transactions Spent/Received summary. No per-account balances. Bank/UPI/Cash ↔ each other: **no effect** on Total Available Balance. Under the card model (`transferCashEffect`): **X → card** (bill payment) −amount, **card → X** (cash withdrawal) +amount.
 - **Hints** (`transferHint`): X → card: "Card bill payment: reduces your available balance and what you owe on the card. Not counted as spending — the purchases were already recorded." (`CARD_BILL_HINT`); card → X: "Cash withdrawal from your credit card: adds to your available balance and to what you owe on the card. Not counted as income." (`CARD_ADVANCE_HINT`); others: `OWN_TRANSFER_HINT`. Any pair is allowed; `from ≠ to`.
 - **Overview Recent Transactions** = latest **5** of transactions and transfers merged by date (`mergeFeed`; ties keep transactions first). The day-group "net" header sums **transactions only** (hidden when a day shows only transfers).
 - Transfer screen summary: "This month: N transfers · ₹X" (`transferTotals` over the current month).
@@ -594,7 +606,7 @@ Gmail only: no SMS and no inbound email service. A Google Apps Script in the use
 - **Overview balance card:** under the figure, once, the card-due info prompt with **Update balance**. The editor has two fields (balance + unpaid credit card amount). Its tiles are Income, Spent, Remaining and, with a card set up, **Credit Card** (see §11; links to `/card`). Three across, or two rows of two with the fourth tile until the box is wide enough for four.
 - **Credit Card** (`/card`): not set up → intro (3 bullets), **setup form**: Statement day + Bill due day selects (1st–28th, must differ; hint "due on the due day of the same/next month"), optional Credit limit; also shows what's currently owed if anything. Set up → hero **Bill to pay** (₹billOutstanding; red when overdue) with a badge "Due 5 Nov · in 2 days" (amber ≤ 5 days, red "Overdue", green "All paid"), statement line, **Pay bill ₹X** (or **Pay early ₹due** when no bill but something is owed) → `/transfer?from=bank&to=card&amount=X`; tiles **Unbilled** (next statement date) and **Total due** (or **Card credit** when overpaid); **Credit limit** bar (`% used`, amber ≥ 80%, "₹X of ₹limit", available credit) when a limit is set; lists **This cycle (unbilled)** and **Last statement** using `TransactionRow`/`TransferRow` swipe rows (empty states); details line + **Edit card** (same form inline) and **Remove card** (danger ConfirmDialog; transactions/transfers kept). A "Transfer between your accounts" link sits at the end. Fade-up entrance is `motion-safe:`.
 - **Transfer** (`/transfer`, `/transfer?id=…` to edit, `/transfer?from=bank&to=card&amount=1234.50` to prefill a NEW transfer via `transferPrefill`; bad params fall back to Bank → Cash, empty amount): compact animated header (From-account icon → coins → To-account icon, dashed line; `motion-safe:`), **From** and **To** chip rows (Bank, UPI, Cash, Credit Card) with a swap button; the From account is disabled in the To row, and picking the current To as From swaps them. Blue hint for card bill payments (To = Credit Card) and card cash withdrawals (From = Credit Card); amber low-balance warning under the amount when a bill payment is more than the available balance (non-blocking). Big amount input (same style as Add Expense, `sanitizeAmount`), DateTimePicker, optional note (≤ 120). New → saves directly, shows a "Saved …" status and resets the form; Edit → "Save changes to this transfer?" confirm, then back to `/transfer`. Server errors inline (`role="alert"`). Unknown id → "Transfer not found". Below: "Your transfers" history (newest first) with "This month: N transfers · ₹X", rows via `TransferRow`; empty state. Not in the bottom nav (a 6th item would crowd small phones). All animations use `motion-safe:` (keyframes `ledgerly-travel/float/shimmer/fade-up/dash/pop/ring/progress/fade-in` in `globals.css`).
-- **Transfer rows** (`components/TransferRow.tsx`, on `SwipeActions`, same structure as transaction rows): blue ⇄ tile (`bg-[#e3eefc] text-[#2a78d6]`), title = note or "Card bill payment"/"Card cash withdrawal"/"Transfer", line "Bank → Cash · 2:45 PM", amount in **neutral** text (`₹2,000.00`, no sign, not red/green). Actions: View (details pop-up with Edit), Edit (`/transfer?id=…`), Delete (danger confirm). Shown in Overview Recent Transactions, Accounts history (with a payment-method filter, transfers whose From/To label equals the method name, e.g. "UPI", "Cash", "Credit Card") and the Transfer screen.
+- **Transfer rows** (`components/TransferRow.tsx`, on `SwipeActions`, same structure as transaction rows): blue ⇄ tile (`bg-[#e3eefc] text-[#2a78d6]`), title = note or "Card bill payment"/"Card cash withdrawal"/"Transfer", line "Bank → Cash · 2:45 PM", amount in **neutral** text (`₹2,000.00`, no sign, not red/green). Actions: View (details pop-up with Edit), Edit (`/transfer?id=…`), Delete (danger confirm). Shown in Overview Recent Transactions, All Transactions (the Account filter matches either side of a transfer) and the Transfer screen.
 - **To review** (`/review`; Overview row "N transactions to review" and the bell link here): one card per alert with Expense/Income/Transfer tabs, amount, merchant, category grid (expense), payment method (or From/To chips for a transfer), DateTimePicker (defaults to the alert's time). The original alert text isn't shown. **Add** saves straight away and is disabled with a reason until complete. **Not a transaction** asks for confirmation. Empty state links to setup.
 - **Gmail auto-capture** (`/capture`, from the account menu): **Create my script** shows the script once with a copy button; numbered setup steps; status with the last alert time; **Create a new script** and **Turn off** both confirm; privacy note. On localhost it warns that Google can't reach the address.
 - **Launch splash** (`components/Splash.tsx`): while the signed-in app loads, the logo tile pops in (spring), one soft ring pulse, "Ledgerly" + tagline "Track every rupee, calmly." slide up, a thin progress line glides; shown for **at least 800 ms** (`introDone` in the provider) so it finishes, longer only if data is still loading; then the app fades in (0.4 s). Plays on app open only (the `(app)` layout persists across tabs). Login/Sign-up get the same entrance (logo pop, staggered fade-up). All `motion-safe:`.
@@ -668,7 +680,7 @@ Also bump "Last updated" at the top. Keep entries factual and short; link to fil
 ### Unit tests (Vitest)
 - Run: `npm test` (single run, as in CI) or `npm run test:watch`. Takes about a second; no network, no database.
 - Location: `src/lib/__tests__/<module>.test.ts` (one file per module in `src/lib`). Shared builders (`tx`, `loan`, `payment`, `local`, `iso`) live in `src/lib/__tests__/fixtures.ts`.
-- Covered: `insights` (period bounds, totals, `anchoredBalance`), `loans`, `balance`, `csv`, `loanExport`, `creditCard`, `transfers`, `bankAlertParser`, `captureMatch`, `gmailScript`, and the server validators `transactionInput`, `loanInput`, `authInput`, `transferInput`, `settingsInput`. Not covered: React components, API routes, Mongoose models.
+- Covered: `insights` (period bounds, totals, `anchoredBalance`), `loans`, `balance`, `csv`, `loanExport`, `creditCard`, `transfers`, `bankAlertParser`, `captureMatch`, `gmailScript`, `alerts`, `deadline`, `categories`, `transactionFilters`, `safeNext`, and the server validators `transactionInput`, `loanInput`, `authInput`, `transferInput`, `settingsInput`. Not covered: React components, API routes, Mongoose models.
 - Config: `vitest.config.mts`: `@/*` → `src/*` alias, `environment: "node"`, `server-only` aliased to the empty `test/server-only-stub.ts` (so server validators import cleanly). `test/setup.ts` deletes `MONGODB_URI` and restores real timers after each test.
 - **Time zone is pinned to `Asia/Kolkata`** (set in the config and the setup file), so local-date maths gives the same results on any machine. Use `local()`/`iso()` from fixtures for dates and `vi.useFakeTimers()` + `vi.setSystemTime()` wherever "now" matters.
 - Convention: a known bug can be pinned with `it.fails` (listed in §19); when it's fixed the test starts failing, so switch it to `it`. (The first one, `slug()` splitting Devanagari/accented names, was fixed on 2026-11-03.)
