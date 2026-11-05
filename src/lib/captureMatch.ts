@@ -32,8 +32,9 @@ export function suggestCategory(merchant: string | undefined, transactions: Tran
 }
 
 /**
- * True when the same amount was already recorded or captured within a day: the user may have typed it by hand, or the
- * bank may have sent two alerts for one payment. The review list flags it instead of blocking anything.
+ * True when the same amount moved the same way within a day: the user may have typed it by hand, or the bank may have
+ * sent two alerts for one payment. Money in never matches money out (sending ₹10 and receiving ₹10 are two events).
+ * The review list flags it instead of blocking anything.
  */
 export function possibleDuplicate(
   item: CapturedItem,
@@ -43,9 +44,12 @@ export function possibleDuplicate(
 ): boolean {
   const at = +new Date(item.receivedAt);
   const near = (iso: string) => Math.abs(+new Date(iso) - at) <= DAY_MS;
+  const moneyIn = item.kind === "income";
   return (
-    transactions.some((t) => Math.abs(t.amount) === item.amount && near(t.date)) ||
-    transfers.some((t) => t.amount === item.amount && near(t.date)) ||
-    pending.some((p) => p.id !== item.id && p.amount === item.amount && near(p.receivedAt))
+    transactions.some((t) => t.amount > 0 === moneyIn && Math.abs(t.amount) === item.amount && near(t.date)) ||
+    (!moneyIn && transfers.some((t) => t.amount === item.amount && near(t.date))) ||
+    pending.some(
+      (p) => p.id !== item.id && (p.kind === "income") === moneyIn && p.amount === item.amount && near(p.receivedAt),
+    )
   );
 }

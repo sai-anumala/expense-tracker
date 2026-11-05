@@ -67,7 +67,6 @@ function ReviewCard({ item }: { item: CapturedItem }) {
   const [from, setFrom] = useState<TransferAccount>("bank");
   const [to, setTo] = useState<TransferAccount>(item.kind === "atmWithdrawal" ? "cash" : "card");
   const [when, setWhen] = useState(() => new Date(item.receivedAt));
-  const [showText, setShowText] = useState(false);
   const [confirmDismiss, setConfirmDismiss] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -222,18 +221,6 @@ function ReviewCard({ item }: { item: CapturedItem }) {
       )}
 
       <DateTimePicker label="Date & Time" value={when} onChange={setWhen} />
-
-      <div>
-        <button onClick={() => setShowText((v) => !v)} aria-expanded={showText} className="text-sm font-medium text-primary">
-          {showText ? "Hide bank alert" : "Show bank alert"}
-        </button>
-        {showText && (
-          <p className="mt-2 rounded-lg bg-surface-container-low p-3 text-sm break-words text-on-surface-variant">
-            {item.sender && <span className="mb-1 block font-medium">{item.sender}</span>}
-            {item.text}
-          </p>
-        )}
-      </div>
 
       {error && (
         <p role="alert" className="rounded-lg bg-secondary-fixed px-4 py-3 text-sm text-secondary">

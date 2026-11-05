@@ -35,6 +35,19 @@ describe("possibleDuplicate", () => {
     expect(possibleDuplicate(item(), [], [transfer(500, iso(2026, 11, 4, 13))], [])).toBe(true);
     expect(possibleDuplicate(item(), [], [], [item({ id: "c2", receivedAt: iso(2026, 11, 5, 12, 1) })])).toBe(true);
   });
+  it("money received never matches money sent, in either direction", () => {
+    const received = item({ kind: "income" });
+    expect(possibleDuplicate(received, [tx(-500, iso(2026, 11, 5, 9))], [], [])).toBe(false);
+    expect(possibleDuplicate(received, [], [transfer(500, iso(2026, 11, 5, 9))], [])).toBe(false);
+    expect(possibleDuplicate(received, [], [], [item({ id: "c2" })])).toBe(false);
+    expect(possibleDuplicate(item(), [tx(500, iso(2026, 11, 5, 9))], [], [])).toBe(false);
+    expect(possibleDuplicate(item(), [], [], [item({ id: "c2", kind: "income" })])).toBe(false);
+  });
+  it("still flags the same direction", () => {
+    expect(possibleDuplicate(item({ kind: "income" }), [tx(500, iso(2026, 11, 5, 9))], [], [])).toBe(true);
+    expect(possibleDuplicate(item({ kind: "income" }), [], [], [item({ id: "c2", kind: "income" })])).toBe(true);
+    expect(possibleDuplicate(item({ kind: "cardBill" }), [], [], [item({ id: "c2" })])).toBe(true);
+  });
   it("no match for a different amount, an older record, or the item itself", () => {
     expect(possibleDuplicate(item(), [tx(-501, iso(2026, 11, 5, 9))], [], [])).toBe(false);
     expect(possibleDuplicate(item(), [tx(-500, iso(2026, 11, 3, 9))], [], [])).toBe(false);
