@@ -2,7 +2,7 @@
 
 > 📘 **Full project guide for developers and AI agents: [AGENTS.md](AGENTS.md)** (architecture, data model, API, formulas, deployment, gotchas).
 
-A mobile-first expense tracker built with **Next.js 15 (App Router)**, **Tailwind CSS v4**, and **MongoDB (Mongoose)**. UI based on the Google Stitch design "Clean Expense Tracker" (references in [`design/`](design)).
+A mobile-first, fully responsive expense tracker built with **Next.js 15 (App Router)**, **Tailwind CSS v4**, and **MongoDB (Mongoose)**. UI based on the Google Stitch design "Clean Expense Tracker" (references in [`design/`](design)).
 
 ## Features
 

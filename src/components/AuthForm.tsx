@@ -53,7 +53,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
   }
 
   return (
-    <main className="flex min-h-dvh flex-col justify-center px-5 py-10">
+    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center px-5 py-10">
       <div className="mb-8 flex flex-col items-center text-center">
         <span className="motion-safe:animate-[ledgerly-pop_0.6s_cubic-bezier(0.34,1.56,0.64,1)_both]">
           <Logo />

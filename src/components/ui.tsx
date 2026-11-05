@@ -2,7 +2,7 @@ import Link from "next/link";
 import { UserMenu } from "./UserMenu";
 import { NotificationBell } from "./NotificationBell";
 import { OverviewAlertBanner } from "./AlertBanner";
-import { CalendarDays, ChevronDown, Wallet, type LucideIcon } from "lucide-react";
+import { ArrowLeft, CalendarDays, ChevronDown, Wallet, type LucideIcon } from "lucide-react";
 import type { Tone } from "@/lib/data";
 
 const toneClasses: Record<Tone | "secondary", string> = {
@@ -41,17 +41,22 @@ export function Logo() {
   );
 }
 
+const headerClass =
+  "sticky top-0 z-20 flex items-center gap-4 bg-surface-container-lowest/90 px-5 py-4 backdrop-blur md:bg-surface/90 md:px-8";
+
+/** Header of the tabbed screens. From `md` the logo moves to SideNav, so the screen name becomes the title. */
 export function AppHeader({ subtitle }: { subtitle: string }) {
   return (
     <>
-      <header className="sticky top-0 z-20 flex items-center justify-between bg-surface-container-lowest/90 px-5 py-4 backdrop-blur">
-        <Link href="/" className="flex items-center gap-3">
+      <header className={`${headerClass} justify-between`}>
+        <Link href="/" className="flex items-center gap-3 md:hidden">
           <Logo />
           <span className="leading-tight">
             <span className="block text-xl font-semibold tracking-tight">Ledgerly</span>
             <span className="block text-sm text-on-surface-variant">{subtitle}</span>
           </span>
         </Link>
+        <h1 className="hidden text-2xl font-semibold tracking-tight md:block">{subtitle}</h1>
         <div className="flex items-center gap-4">
           <NotificationBell />
           <UserMenu />
@@ -60,6 +65,41 @@ export function AppHeader({ subtitle }: { subtitle: string }) {
       {/* Most important reminder; renders only on Overview ("/"). */}
       <OverviewAlertBanner />
     </>
+  );
+}
+
+/** Header of the detail and form screens: back link, title, account menu. */
+export function SubHeader({ title, backHref, backLabel = "Back" }: { title: string; backHref: string; backLabel?: string }) {
+  return (
+    <header className={headerClass}>
+      <Link href={backHref} aria-label={backLabel} className="rounded-full p-2 hover:bg-surface-container">
+        <ArrowLeft className="size-6" />
+      </Link>
+      <h1 className="min-w-0 flex-1 truncate text-2xl font-semibold tracking-tight">{title}</h1>
+      <UserMenu />
+    </header>
+  );
+}
+
+/**
+ * One column on phones and tablets, two from `lg`. DOM order is the phone order. A third child can go back under
+ * the first by making the second `lg:col-start-2 lg:row-span-2 lg:row-start-1`.
+ */
+export function PageColumns({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="space-y-6 lg:grid lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:grid-rows-[auto_1fr] lg:items-start lg:gap-6 lg:space-y-0">
+      {children}
+    </div>
+  );
+}
+
+/** How to reach a row's actions, worded for the device: swipe/tap on touch screens, click with a mouse. */
+export function RowHint({ noun, actions, className = "" }: { noun: string; actions: string; className?: string }) {
+  return (
+    <p className={`text-xs text-on-surface-variant ${className}`}>
+      <span className="pointer-fine:hidden">Swipe a {noun} left (or tap it)</span>
+      <span className="hidden pointer-fine:inline">Click a {noun}</span> to {actions}.
+    </p>
   );
 }
 

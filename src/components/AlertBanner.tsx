@@ -25,7 +25,7 @@ export function AlertBanner() {
   const urgent = top.severity === "urgent";
 
   return (
-    <div className="px-5 pt-1 pb-2 motion-safe:animate-[ledgerly-fade-in_0.3s_ease-out]">
+    <div className="px-5 pt-1 pb-2 md:px-8 motion-safe:animate-[ledgerly-fade-in_0.3s_ease-out]">
       <div
         role="status"
         className={`flex items-center gap-3 rounded-xl px-3 py-2 ring-1 ${

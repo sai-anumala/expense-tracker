@@ -16,8 +16,9 @@ import {
   Smartphone,
   type LucideIcon,
 } from "lucide-react";
-import { AppHeader } from "@/components/ui";
+import { AppHeader, PageColumns, RowHint } from "@/components/ui";
 import { TabPage } from "@/components/BottomNav";
+import { ViewAllButton, useViewAll } from "@/components/ViewAll";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { DateTimePicker } from "@/components/DateTimePicker";
 import { sanitizeAmount } from "@/components/AmountForm";
@@ -78,6 +79,7 @@ function TransferForm({
   const router = useRouter();
   const { transfers, addTransfer, updateTransfer, transactions, loans, settings } = useAppData();
   const existing = editId ? transfers.find((t) => t.id === editId) : undefined;
+  const history = useViewAll(transfers);
   const isEdit = Boolean(existing);
 
   const [from, setFrom] = useState<TransferAccount>(existing?.from ?? prefill.from);
@@ -161,106 +163,137 @@ function TransferForm({
     <>
       <AppHeader subtitle={isEdit ? "Edit transfer" : "Transfer"} />
       <TabPage>
-        <Illustration from={from} to={to} />
+        <PageColumns>
+          <div className="min-w-0 space-y-6">
+            <Illustration from={from} to={to} />
 
-        <section className="card space-y-4 p-4">
-          <AccountChips label="From" value={from} onPick={pickFrom} />
-          <div className="flex justify-center">
+            <section className="card space-y-4 p-4">
+              <AccountChips label="From" value={from} onPick={pickFrom} />
+              <div className="flex justify-center">
+                <button
+                  type="button"
+                  onClick={swap}
+                  aria-label="Swap From and To"
+                  className="grid size-9 place-items-center rounded-full bg-surface-container text-on-surface-variant transition hover:bg-surface-container-high"
+                >
+                  <ArrowDownUp className="size-4" aria-hidden />
+                </button>
+              </div>
+              <AccountChips label="To" value={to} disabled={from} onPick={setTo} />
+              {(isCardBill({ from, to }) || isCardAdvance({ from, to })) && (
+                <p className="flex items-start gap-2 rounded-lg bg-[#e3eefc] px-3 py-2.5 text-sm text-[#1d5aa3]">
+                  <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
+                  {transferHint({ from, to })}
+                </p>
+              )}
+            </section>
+
+            <section className="card px-6 py-6 text-center">
+              <label htmlFor="amount" className="label-caps text-on-surface-variant">
+                Amount moved
+              </label>
+              <div className="mt-2 flex items-baseline justify-center font-sans text-5xl font-bold tracking-tight tabular-nums">
+                <span className="mr-1 text-4xl font-semibold text-outline">{CURRENCY_SYMBOL}</span>
+                <input
+                  id="amount"
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  value={amount}
+                  aria-invalid={tooLarge}
+                  onChange={(e) => setAmount(sanitizeAmount(e.target.value))}
+                  className="bg-transparent caret-primary outline-none placeholder:font-semibold placeholder:text-outline-variant"
+                  style={{ width: `${Math.max(4, amount.length) + 0.5}ch` }}
+                />
+              </div>
+              {tooLarge && (
+                <p role="alert" className="mt-3 text-sm text-secondary">
+                  That amount is too large.
+                </p>
+              )}
+              {short && !tooLarge && (
+                <div className="mt-3">
+                  <BalanceNotice>
+                    <ShortfallText available={short.available} after={short.after} verb="This card bill payment" />
+                  </BalanceNotice>
+                </div>
+              )}
+            </section>
+
+            <section className="card space-y-3 p-4">
+              <DateTimePicker label="Date & Time" value={when} onChange={setWhen} />
+              <label className="relative flex items-center gap-4 rounded-lg bg-surface-container-low px-4 py-3">
+                <span className="grid size-10 shrink-0 place-items-center rounded-full bg-surface-container-lowest">
+                  <NotebookPen className="size-5" aria-hidden />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="label-caps block text-on-surface-variant">Note (optional)</span>
+                  <input
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    maxLength={120}
+                    placeholder="e.g. ATM withdrawal"
+                    className="w-full bg-transparent text-lg outline-none placeholder:text-outline"
+                  />
+                </span>
+              </label>
+            </section>
+
+            {error && (
+              <p role="alert" className="rounded-lg bg-secondary-fixed px-4 py-3 text-sm text-secondary">
+                {error}
+              </p>
+            )}
+            {saved && (
+              <p role="status" className="rounded-lg bg-primary-fixed/50 px-4 py-3 text-sm text-primary">
+                {saved}
+              </p>
+            )}
+
             <button
-              type="button"
-              onClick={swap}
-              aria-label="Swap From and To"
-              className="grid size-9 place-items-center rounded-full bg-surface-container text-on-surface-variant transition hover:bg-surface-container-high"
+              onClick={onSaveClick}
+              disabled={!canSave}
+              className="flex w-full items-center gap-3 rounded-xl bg-primary px-6 py-5 text-on-primary shadow-lg shadow-primary/25 transition hover:bg-primary-container disabled:opacity-50"
             >
-              <ArrowDownUp className="size-4" aria-hidden />
+              <CircleCheck className="size-6" aria-hidden />
+              <span className="flex-1 text-left text-xl font-semibold">
+                {saving && !isEdit ? "Saving…" : isEdit ? "Save changes" : "Save transfer"}
+              </span>
+              <span className="rounded-full bg-primary-container px-4 py-1 tabular-nums text-lg">{money(value)}</span>
             </button>
+            {isEdit && (
+              <Link href="/transfer" className="block text-center text-sm font-medium text-on-surface-variant">
+                Cancel editing
+              </Link>
+            )}
           </div>
-          <AccountChips label="To" value={to} disabled={from} onPick={setTo} />
-          {(isCardBill({ from, to }) || isCardAdvance({ from, to })) && (
-            <p className="flex items-start gap-2 rounded-lg bg-[#e3eefc] px-3 py-2.5 text-sm text-[#1d5aa3]">
-              <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
-              {transferHint({ from, to })}
-            </p>
-          )}
-        </section>
 
-        <section className="card px-6 py-6 text-center">
-          <label htmlFor="amount" className="label-caps text-on-surface-variant">
-            Amount moved
-          </label>
-          <div className="mt-2 flex items-baseline justify-center font-sans text-5xl font-bold tracking-tight tabular-nums">
-            <span className="mr-1 text-4xl font-semibold text-outline">{CURRENCY_SYMBOL}</span>
-            <input
-              id="amount"
-              inputMode="decimal"
-              placeholder="0.00"
-              value={amount}
-              aria-invalid={tooLarge}
-              onChange={(e) => setAmount(sanitizeAmount(e.target.value))}
-              className="bg-transparent caret-primary outline-none placeholder:font-semibold placeholder:text-outline-variant"
-              style={{ width: `${Math.max(4, amount.length) + 0.5}ch` }}
-            />
-          </div>
-          {tooLarge && (
-            <p role="alert" className="mt-3 text-sm text-secondary">
-              That amount is too large.
-            </p>
-          )}
-          {short && !tooLarge && (
-            <div className="mt-3">
-              <BalanceNotice>
-                <ShortfallText available={short.available} after={short.after} verb="This card bill payment" />
-              </BalanceNotice>
+          {/* History */}
+          <section className="min-w-0">
+            <div className="mb-2 flex items-baseline justify-between gap-3 px-1">
+              <h2 className="text-[22px] font-semibold tracking-tight">Your transfers</h2>
+              <span className="text-right text-xs tabular-nums text-on-surface-variant">
+                This month: {plural(month.count, "transfer")} · {money(month.amount)}
+              </span>
             </div>
-          )}
-        </section>
-
-        <section className="card space-y-3 p-4">
-          <DateTimePicker label="Date & Time" value={when} onChange={setWhen} />
-          <label className="relative flex items-center gap-4 rounded-lg bg-surface-container-low px-4 py-3">
-            <span className="grid size-10 shrink-0 place-items-center rounded-full bg-surface-container-lowest">
-              <NotebookPen className="size-5" aria-hidden />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="label-caps block text-on-surface-variant">Note (optional)</span>
-              <input
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                maxLength={120}
-                placeholder="e.g. ATM withdrawal"
-                className="w-full bg-transparent text-lg outline-none placeholder:text-outline"
+            {transfers.length === 0 ? (
+              <EmptyState
+                icon={ArrowLeftRight}
+                title="No transfers yet"
+                body="Record money you move between your bank, UPI, cash and credit card, like paying the card bill. It never counts as spending."
               />
-            </span>
-          </label>
-        </section>
-
-        {error && (
-          <p role="alert" className="rounded-lg bg-secondary-fixed px-4 py-3 text-sm text-secondary">
-            {error}
-          </p>
-        )}
-        {saved && (
-          <p role="status" className="rounded-lg bg-primary-fixed/50 px-4 py-3 text-sm text-primary">
-            {saved}
-          </p>
-        )}
-
-        <button
-          onClick={onSaveClick}
-          disabled={!canSave}
-          className="flex w-full items-center gap-3 rounded-xl bg-primary px-6 py-5 text-on-primary shadow-lg shadow-primary/25 transition hover:bg-primary-container disabled:opacity-50"
-        >
-          <CircleCheck className="size-6" aria-hidden />
-          <span className="flex-1 text-left text-xl font-semibold">
-            {saving && !isEdit ? "Saving…" : isEdit ? "Save changes" : "Save transfer"}
-          </span>
-          <span className="rounded-full bg-primary-container px-4 py-1 tabular-nums text-lg">{money(value)}</span>
-        </button>
-        {isEdit && (
-          <Link href="/transfer" className="block text-center text-sm font-medium text-on-surface-variant">
-            Cancel editing
-          </Link>
-        )}
+            ) : (
+              <>
+                <RowHint noun="transfer" actions="view, edit or delete" className="mb-1 px-1" />
+                <ul className="card divide-y divide-surface-container overflow-hidden px-5">
+                  {history.shown.map((t) => (
+                    <TransferRow key={t.id} t={t} />
+                  ))}
+                </ul>
+                <ViewAllButton list={history} />
+              </>
+            )}
+          </section>
+        </PageColumns>
 
         <ConfirmDialog
           open={confirm}
@@ -275,34 +308,6 @@ function TransferForm({
           onCancel={() => setConfirm(false)}
           onConfirm={save}
         />
-
-        {/* History */}
-        <section>
-          <div className="mb-2 flex items-baseline justify-between gap-3 px-1">
-            <h2 className="text-[22px] font-semibold tracking-tight">Your transfers</h2>
-            <span className="text-right text-xs tabular-nums text-on-surface-variant">
-              This month: {plural(month.count, "transfer")} · {money(month.amount)}
-            </span>
-          </div>
-          {transfers.length === 0 ? (
-            <EmptyState
-              icon={ArrowLeftRight}
-              title="No transfers yet"
-              body="Record money you move between your bank, UPI, cash and credit card, like paying the card bill. It never counts as spending."
-            />
-          ) : (
-            <>
-              <p className="mb-1 px-1 text-xs text-on-surface-variant">
-                Swipe a transfer left (or tap it) to view, edit or delete.
-              </p>
-              <ul className="card divide-y divide-surface-container overflow-hidden px-5">
-                {transfers.map((t) => (
-                  <TransferRow key={t.id} t={t} />
-                ))}
-              </ul>
-            </>
-          )}
-        </section>
       </TabPage>
     </>
   );
@@ -361,7 +366,7 @@ function Illustration({ from, to }: { from: TransferAccount; to: TransferAccount
     <section className="relative overflow-hidden rounded-xl bg-surface-container-lowest px-5 py-4 shadow-sm">
       <div className="pointer-events-none absolute -top-10 -right-10 size-32 rounded-full bg-primary/10 blur-2xl" />
       <div className="relative mx-auto h-14 max-w-60" aria-hidden>
-        <svg className="absolute inset-x-10 top-1/2 h-2 -translate-y-1/2" viewBox="0 0 100 2" preserveAspectRatio="none">
+        <svg className="absolute top-1/2 left-10 h-2 w-[calc(100%-5rem)] -translate-y-1/2" viewBox="0 0 100 2" preserveAspectRatio="none">
           <line
             x1="0"
             y1="1"

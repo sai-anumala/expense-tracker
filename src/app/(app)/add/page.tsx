@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import {
-  ArrowLeft,
   CalendarDays,
   CreditCard,
   ChevronDown,
@@ -15,7 +14,7 @@ import {
   ChevronsUp,
   Trash2,
 } from "lucide-react";
-import { UserMenu } from "@/components/UserMenu";
+import { SubHeader } from "@/components/ui";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { DateTimePicker } from "@/components/DateTimePicker";
 import {
@@ -132,15 +131,9 @@ function AddTransaction() {
 
   return (
     <div className="pb-10">
-      <header className="sticky top-0 z-20 flex items-center gap-4 bg-surface-container-lowest/90 px-5 py-4 backdrop-blur">
-        <Link href="/" aria-label="Back" className="rounded-full p-2 hover:bg-surface-container">
-          <ArrowLeft className="size-6" />
-        </Link>
-        <h1 className="flex-1 text-2xl font-semibold tracking-tight">{isEdit ? "Edit Transaction" : "Add Transaction"}</h1>
-        <UserMenu />
-      </header>
+      <SubHeader title={isEdit ? "Edit Transaction" : "Add Transaction"} backHref="/" />
 
-      <main className="space-y-6 px-5 pt-2">
+      <main className="mx-auto w-full max-w-xl space-y-6 px-5 pt-2 md:px-0">
         <div role="tablist" className="grid grid-cols-2 rounded-full bg-surface-container-high p-1.5">
           {(["expense", "income"] as const).map((k) => (
             <button
@@ -176,7 +169,7 @@ function AddTransaction() {
               style={{ width: `${Math.max(4, amount.length) + 0.5}ch` }}
             />
           </div>
-          <div className="mt-4 flex justify-center gap-2 tabular-nums text-sm">
+          <div className="mt-4 flex flex-wrap justify-center gap-2 tabular-nums text-sm">
             {[100, 500, 1000].map((n) => (
               <button key={n} onClick={() => bump(n)} className="rounded-full bg-surface-container px-4 py-1.5">
                 +{moneyWhole(n)}
@@ -215,7 +208,7 @@ function AddTransaction() {
                     key={id}
                     aria-pressed={on}
                     onClick={() => setCategory(id)}
-                    className={`flex aspect-square flex-col items-center justify-center gap-1.5 rounded-xl px-1 text-center text-[13px] leading-tight transition ${
+                    className={`flex aspect-square flex-col items-center justify-center gap-1.5 rounded-xl px-1 text-center sm:aspect-auto sm:py-4 text-[13px] leading-tight transition ${
                       on ? "bg-primary text-on-primary" : "card hover:bg-surface-container-low"
                     }`}
                   >
@@ -227,7 +220,7 @@ function AddTransaction() {
               <button
                 aria-expanded={showMore}
                 onClick={() => setShowMore((v) => !v)}
-                className="flex aspect-square flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-outline-variant px-1 text-center text-[13px] leading-tight font-medium text-primary transition hover:bg-surface-container-low"
+                className="flex aspect-square flex-col items-center justify-center gap-1.5 rounded-xl border sm:aspect-auto sm:py-4 border-dashed border-outline-variant px-1 text-center text-[13px] leading-tight font-medium text-primary transition hover:bg-surface-container-low"
               >
                 {showMore ? <ChevronsUp className="size-6" aria-hidden /> : <ChevronsDown className="size-6" aria-hidden />}
                 {showMore ? "Show less" : "Show more"}

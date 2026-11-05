@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
-import { ArrowLeft, ArrowDownLeft, ArrowUpRight, ChevronDown, CircleCheck, CreditCard, NotebookPen, UserRound } from "lucide-react";
-import { UserMenu } from "@/components/UserMenu";
+import { ArrowDownLeft, ArrowUpRight, ChevronDown, CircleCheck, CreditCard, NotebookPen, UserRound } from "lucide-react";
+import { SubHeader } from "@/components/ui";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { DateTimePicker } from "@/components/DateTimePicker";
 import { sanitizeAmount } from "@/components/AmountForm";
@@ -140,15 +140,9 @@ function LoanForm() {
 
   return (
     <div className="pb-10">
-      <header className="sticky top-0 z-20 flex items-center gap-4 bg-surface-container-lowest/90 px-5 py-4 backdrop-blur">
-        <Link href={existing ? `/loans/${existing.id}` : "/loans"} aria-label="Back" className="rounded-full p-2 hover:bg-surface-container">
-          <ArrowLeft className="size-6" />
-        </Link>
-        <h1 className="flex-1 text-2xl font-semibold tracking-tight">{isEdit ? "Edit loan" : "Lend / Borrow"}</h1>
-        <UserMenu />
-      </header>
+      <SubHeader title={isEdit ? "Edit loan" : "Lend / Borrow"} backHref={existing ? `/loans/${existing.id}` : "/loans"} />
 
-      <main className="space-y-5 px-5 pt-2">
+      <main className="mx-auto w-full max-w-xl space-y-5 px-5 pt-2 md:px-0">
         <div role="tablist" className="grid grid-cols-2 rounded-full bg-surface-container-high p-1.5">
           {(["lent", "borrowed"] as const).map((d) => (
             <button
@@ -259,14 +253,14 @@ function LoanForm() {
             </span>
             <ChevronDown className="pointer-events-none size-5 text-on-surface-variant" aria-hidden />
           </label>
-          <label className="flex items-center justify-between gap-3 rounded-lg bg-surface-container-low px-4 py-3">
+          <label className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-surface-container-low px-4 py-3">
             <span className="label-caps text-on-surface-variant">Repay by (optional)</span>
             <input
               type="date"
               value={dueDate}
               min={toDateInput(when.toISOString())}
               onChange={(e) => setDueDate(e.target.value)}
-              className="bg-transparent text-right outline-none"
+              className="min-w-0 bg-transparent text-right outline-none"
             />
           </label>
         </section>

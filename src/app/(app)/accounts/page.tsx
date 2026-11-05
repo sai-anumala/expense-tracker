@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { Wallet, ReceiptText } from "lucide-react";
-import { AppHeader, IconTile } from "@/components/ui";
+import { AppHeader, IconTile, PageColumns } from "@/components/ui";
 import { TabPage } from "@/components/BottomNav";
+import { ViewAllButton, useViewAll } from "@/components/ViewAll";
 import { EmptyState, TransactionRow } from "@/components/TransactionRow";
 import { TransferRow } from "@/components/TransferRow";
 import { useAppData } from "@/lib/store";
@@ -21,6 +22,7 @@ export default function Accounts() {
     const k = t.account || "Unspecified";
     totals.set(k, (totals.get(k) ?? 0) + t.amount);
   }
+  const methods = useViewAll([...totals]);
   const shownTx = filter ? transactions.filter((t) => (t.account || "Unspecified") === filter) : transactions;
   // With a method filter, show transfers touching the account of the same name (e.g. "UPI", "Cash", "Credit Card").
   const shownTr = filter
@@ -39,11 +41,11 @@ export default function Accounts() {
             body="Payment methods appear here once you record transactions with them."
           />
         ) : (
-          <>
-            {totals.size > 0 && <section>
+          <PageColumns>
+            {totals.size > 0 && <section className="min-w-0">
               <h2 className="label-caps mb-3 px-1 text-on-surface-variant">By payment method</h2>
               <ul className="card divide-y divide-surface-container px-5">
-                {[...totals].map(([name, amount]) => (
+                {methods.shown.map(([name, amount]) => (
                   <li key={name}>
                     <button
                       onClick={() => setFilter(filter === name ? null : name)}
@@ -51,7 +53,7 @@ export default function Accounts() {
                       className="flex w-full items-center gap-4 py-4 text-left"
                     >
                       <IconTile icon={Wallet} tone={filter === name ? "primary" : "neutral"} />
-                      <span className="flex-1 font-semibold">{name}</span>
+                      <span className="min-w-0 flex-1 font-semibold break-words">{name}</span>
                       <span className={`tabular-nums font-semibold ${amount < 0 ? "text-secondary" : "text-primary"}`}>
                         {amount < 0 ? "-" : "+"}
                         {money(amount)}
@@ -60,9 +62,10 @@ export default function Accounts() {
                   </li>
                 ))}
               </ul>
+              <ViewAllButton list={methods} />
             </section>}
 
-            <section>
+            <section className={`min-w-0 ${totals.size > 0 ? "" : "lg:col-span-2"}`}>
               <h2 className="mb-2 px-1 text-[22px] font-semibold tracking-tight">
                 {filter ? `${filter} transactions` : "All transactions"}
               </h2>
@@ -80,7 +83,7 @@ export default function Accounts() {
                 </ul>
               )}
             </section>
-          </>
+          </PageColumns>
         )}
       </TabPage>
     </>

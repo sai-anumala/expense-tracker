@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useState } from "react";
 import { ArrowLeftRight, CalendarClock, CreditCard, Pencil, ReceiptText, Trash2, Wallet } from "lucide-react";
-import { AppHeader, ProgressBar } from "@/components/ui";
+import { AppHeader, PageColumns, ProgressBar } from "@/components/ui";
 import { TabPage } from "@/components/BottomNav";
+import { ViewAllButton, useViewAll } from "@/components/ViewAll";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { sanitizeAmount } from "@/components/AmountForm";
 import { EmptyState, TransactionRow } from "@/components/TransactionRow";
@@ -23,13 +24,15 @@ export default function CardPage() {
   const { settings, transactions, transfers } = useAppData();
   const [editing, setEditing] = useState(false);
   const card = settings.card;
+  const showForm = !card || editing;
+  const formWidth = showForm ? "mx-auto w-full max-w-xl" : "";
 
   return (
     <>
       <AppHeader subtitle="Credit Card" />
       <TabPage>
-        {!card || editing ? (
-          <section className="card space-y-4 p-5 motion-safe:animate-[ledgerly-fade-up_0.4s_ease-out_both]">
+        {showForm ? (
+          <section className="card mx-auto w-full max-w-xl space-y-4 p-5 motion-safe:animate-[ledgerly-fade-up_0.4s_ease-out_both]">
             <div className="flex items-center gap-3">
               <span className="grid size-12 shrink-0 place-items-center rounded-xl bg-primary text-on-primary shadow-md shadow-primary/30">
                 <CreditCard className="size-6" aria-hidden />
@@ -57,7 +60,7 @@ export default function CardPage() {
 
         <Link
           href="/transfer"
-          className="card flex items-center gap-3 px-5 py-4 text-sm font-medium transition hover:bg-surface-container-low"
+          className={`card flex items-center gap-3 px-5 py-4 text-sm font-medium transition hover:bg-surface-container-low ${formWidth}`}
         >
           <ArrowLeftRight className="size-5 text-primary" aria-hidden />
           <span className="flex-1">Transfer between your accounts</span>
@@ -213,137 +216,142 @@ function CardOverview({ card, onEdit }: { card: CardSettings; onEdit: () => void
 
   return (
     <>
-      {/* Hero: bill to pay */}
-      <section className="relative overflow-hidden rounded-xl bg-surface-container-lowest p-5 shadow-sm motion-safe:animate-[ledgerly-fade-up_0.4s_ease-out_both]">
-        <div className="pointer-events-none absolute -top-8 -right-8 size-32 rounded-full bg-primary/10 blur-2xl" />
-        <div className="relative z-10 space-y-3">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs font-medium text-on-surface-variant">Bill to pay</span>
-            <DueBadge s={s} />
-          </div>
-          <p
-            className={`text-[36px] leading-[44px] font-bold tracking-[-0.03em] tabular-nums ${
-              s.overdue ? "text-secondary" : "text-on-surface"
-            }`}
-          >
-            {money(s.billOutstanding)}
-          </p>
-          <p className="text-sm text-on-surface-variant">
-            {s.billed > 0 ? (
-              <>
-                Statement of {dayMonth(s.lastStatement)}: <b className="tabular-nums text-on-surface">{money(s.billed)}</b>
-                {s.billOutstanding === 0 && " · paid"}
-              </>
-            ) : (
-              <>No bill from the statement of {dayMonth(s.lastStatement)}.</>
-            )}
-          </p>
-          {payAmount > 0 && (
-            <Link
-              href={payHref}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3.5 font-semibold text-on-primary shadow-lg shadow-primary/25 transition hover:bg-primary-container"
-            >
-              <Wallet className="size-5" aria-hidden />
-              {s.billOutstanding > 0 ? "Pay bill" : "Pay early"} <span className="tabular-nums">{money(payAmount)}</span>
-            </Link>
+      <PageColumns>
+        <div className="min-w-0 space-y-6">
+          {/* Hero: bill to pay */}
+          <section className="relative overflow-hidden rounded-xl bg-surface-container-lowest p-5 shadow-sm motion-safe:animate-[ledgerly-fade-up_0.4s_ease-out_both]">
+            <div className="pointer-events-none absolute -top-8 -right-8 size-32 rounded-full bg-primary/10 blur-2xl" />
+            <div className="relative z-10 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-medium text-on-surface-variant">Bill to pay</span>
+                <DueBadge s={s} />
+              </div>
+              <p
+                className={`text-[36px] leading-[44px] font-bold tracking-[-0.03em] tabular-nums ${
+                  s.overdue ? "text-secondary" : "text-on-surface"
+                }`}
+              >
+                {money(s.billOutstanding)}
+              </p>
+              <p className="text-sm text-on-surface-variant">
+                {s.billed > 0 ? (
+                  <>
+                    Statement of {dayMonth(s.lastStatement)}: <b className="tabular-nums text-on-surface">{money(s.billed)}</b>
+                    {s.billOutstanding === 0 && " · paid"}
+                  </>
+                ) : (
+                  <>No bill from the statement of {dayMonth(s.lastStatement)}.</>
+                )}
+              </p>
+              {payAmount > 0 && (
+                <Link
+                  href={payHref}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3.5 font-semibold text-on-primary shadow-lg shadow-primary/25 transition hover:bg-primary-container"
+                >
+                  <Wallet className="size-5" aria-hidden />
+                  {s.billOutstanding > 0 ? "Pay bill" : "Pay early"} <span className="tabular-nums">{money(payAmount)}</span>
+                </Link>
+              )}
+            </div>
+          </section>
+
+          {/* Unbilled / total due */}
+          <section className="grid grid-cols-2 gap-2">
+            <div className="card p-4">
+              <p className="text-xs font-medium text-on-surface-variant">Unbilled</p>
+              <p className="mt-1 text-lg font-bold tabular-nums">{money(s.unbilled)}</p>
+              <p className="text-xs text-on-surface-variant">Next statement {dayMonth(s.nextStatement)}</p>
+            </div>
+            <div className="card p-4">
+              {s.credit > 0 ? (
+                <>
+                  <p className="text-xs font-medium text-on-surface-variant">Card credit</p>
+                  <p className="mt-1 text-lg font-bold tabular-nums text-primary">{money(s.credit)}</p>
+                  <p className="text-xs text-on-surface-variant">You paid more than you owe</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs font-medium text-on-surface-variant">Total due</p>
+                  <p className="mt-1 text-lg font-bold tabular-nums text-secondary">{money(s.due)}</p>
+                  <p className="text-xs text-on-surface-variant">Billed + unbilled</p>
+                </>
+              )}
+            </div>
+          </section>
+
+          {card.limit && s.utilization !== null && (
+            <section className="card space-y-2 p-5">
+              <div className="flex items-baseline justify-between gap-2 text-sm">
+                <span className="font-semibold">Credit limit</span>
+                <span
+                  className={`tabular-nums font-semibold ${s.utilization >= 0.8 ? "text-tertiary" : "text-on-surface-variant"}`}
+                >
+                  {Math.round(s.utilization * 100)}% used
+                </span>
+              </div>
+              <ProgressBar value={s.utilization} tone={s.utilization >= 0.8 ? "tertiary" : "primary"} />
+              <div className="flex flex-wrap justify-between gap-x-3 text-xs tabular-nums text-on-surface-variant">
+                <span>
+                  <b className="text-on-surface">{money(Math.max(0, s.due))}</b> of {money(card.limit)}
+                </span>
+                <span>{money(Math.max(0, card.limit - Math.max(0, s.due)))} available</span>
+              </div>
+            </section>
           )}
         </div>
-      </section>
-
-      {/* Unbilled / total due */}
-      <section className="grid grid-cols-2 gap-2">
-        <div className="card p-4">
-          <p className="text-xs font-medium text-on-surface-variant">Unbilled</p>
-          <p className="mt-1 text-lg font-bold tabular-nums">{money(s.unbilled)}</p>
-          <p className="text-xs text-on-surface-variant">Next statement {dayMonth(s.nextStatement)}</p>
+        <div className="min-w-0 space-y-6 lg:col-start-2 lg:row-span-2 lg:row-start-1">
+          <EventList
+            title="This cycle (unbilled)"
+            sub={`Since ${dayMonth(new Date(s.lastStatement.getTime() + 1))}`}
+            events={s.unbilledEvents}
+            transactions={transactions}
+            transfers={transfers}
+            empty="No card activity since the last statement."
+          />
+          <EventList
+            title="Last statement"
+            sub={`Closed ${dayMonth(s.lastStatement)}`}
+            events={s.billedEvents}
+            transactions={transactions}
+            transfers={transfers}
+            empty="Nothing on the last statement."
+          />
         </div>
-        <div className="card p-4">
-          {s.credit > 0 ? (
-            <>
-              <p className="text-xs font-medium text-on-surface-variant">Card credit</p>
-              <p className="mt-1 text-lg font-bold tabular-nums text-primary">{money(s.credit)}</p>
-              <p className="text-xs text-on-surface-variant">You paid more than you owe</p>
-            </>
-          ) : (
-            <>
-              <p className="text-xs font-medium text-on-surface-variant">Total due</p>
-              <p className="mt-1 text-lg font-bold tabular-nums text-secondary">{money(s.due)}</p>
-              <p className="text-xs text-on-surface-variant">Billed + unbilled</p>
-            </>
-          )}
+        <div className="min-w-0 lg:col-start-1">
+          <section className="card space-y-3 p-5">
+            <div className="flex items-start gap-3 text-sm text-on-surface-variant">
+              <CalendarClock className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden />
+              <p>
+                Statement on the <b className="text-on-surface">{ordinal(card.statementDay)}</b>, bill due on the{" "}
+                <b className="text-on-surface">{ordinal(card.dueDay)}</b>
+                {card.limit ? (
+                  <>
+                    , limit <b className="tabular-nums text-on-surface">{money(card.limit)}</b>
+                  </>
+                ) : null}
+                .
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={onEdit}
+                className="flex items-center justify-center gap-2 rounded-full bg-surface-container py-2.5 text-sm font-medium"
+              >
+                <Pencil className="size-4" aria-hidden /> Edit card
+              </button>
+              <button
+                onClick={() => {
+                  setError(null);
+                  setConfirmRemove(true);
+                }}
+                className="flex items-center justify-center gap-2 rounded-full bg-secondary-fixed py-2.5 text-sm font-medium text-secondary"
+              >
+                <Trash2 className="size-4" aria-hidden /> Remove card
+              </button>
+            </div>
+          </section>
         </div>
-      </section>
-
-      {card.limit && s.utilization !== null && (
-        <section className="card space-y-2 p-5">
-          <div className="flex items-baseline justify-between gap-2 text-sm">
-            <span className="font-semibold">Credit limit</span>
-            <span
-              className={`tabular-nums font-semibold ${s.utilization >= 0.8 ? "text-tertiary" : "text-on-surface-variant"}`}
-            >
-              {Math.round(s.utilization * 100)}% used
-            </span>
-          </div>
-          <ProgressBar value={s.utilization} tone={s.utilization >= 0.8 ? "tertiary" : "primary"} />
-          <div className="flex flex-wrap justify-between gap-x-3 text-xs tabular-nums text-on-surface-variant">
-            <span>
-              <b className="text-on-surface">{money(Math.max(0, s.due))}</b> of {money(card.limit)}
-            </span>
-            <span>{money(Math.max(0, card.limit - Math.max(0, s.due)))} available</span>
-          </div>
-        </section>
-      )}
-
-      <EventList
-        title="This cycle (unbilled)"
-        sub={`Since ${dayMonth(new Date(s.lastStatement.getTime() + 1))}`}
-        events={s.unbilledEvents}
-        transactions={transactions}
-        transfers={transfers}
-        empty="No card activity since the last statement."
-      />
-      <EventList
-        title="Last statement"
-        sub={`Closed ${dayMonth(s.lastStatement)}`}
-        events={s.billedEvents}
-        transactions={transactions}
-        transfers={transfers}
-        empty="Nothing on the last statement."
-      />
-
-      <section className="card space-y-3 p-5">
-        <div className="flex items-start gap-3 text-sm text-on-surface-variant">
-          <CalendarClock className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden />
-          <p>
-            Statement on the <b className="text-on-surface">{ordinal(card.statementDay)}</b>, bill due on the{" "}
-            <b className="text-on-surface">{ordinal(card.dueDay)}</b>
-            {card.limit ? (
-              <>
-                , limit <b className="tabular-nums text-on-surface">{money(card.limit)}</b>
-              </>
-            ) : null}
-            .
-          </p>
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            onClick={onEdit}
-            className="flex items-center justify-center gap-2 rounded-full bg-surface-container py-2.5 text-sm font-medium"
-          >
-            <Pencil className="size-4" aria-hidden /> Edit card
-          </button>
-          <button
-            onClick={() => {
-              setError(null);
-              setConfirmRemove(true);
-            }}
-            className="flex items-center justify-center gap-2 rounded-full bg-secondary-fixed py-2.5 text-sm font-medium text-secondary"
-          >
-            <Trash2 className="size-4" aria-hidden /> Remove card
-          </button>
-        </div>
-      </section>
-
+      </PageColumns>
       <ConfirmDialog
         open={confirmRemove}
         danger
@@ -417,6 +425,7 @@ function EventList({
     const t = trById.get(e.id);
     return t ? [<TransferRow key={`tr-${t.id}`} t={t} />] : [];
   });
+  const list = useViewAll(rows);
   return (
     <section>
       <div className="mb-2 flex items-baseline justify-between gap-3 px-1">
@@ -426,7 +435,10 @@ function EventList({
       {rows.length === 0 ? (
         <EmptyState icon={ReceiptText} title="Nothing here" body={empty} />
       ) : (
-        <ul className="card divide-y divide-surface-container overflow-hidden px-5">{rows}</ul>
+        <>
+          <ul className="card divide-y divide-surface-container overflow-hidden px-5">{list.shown}</ul>
+          <ViewAllButton list={list} />
+        </>
       )}
     </section>
   );

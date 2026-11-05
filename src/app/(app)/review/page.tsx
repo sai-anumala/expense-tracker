@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { ArrowLeft, ChevronsDown, ChevronsUp, Inbox } from "lucide-react";
+import { ChevronsDown, ChevronsUp, Inbox } from "lucide-react";
 import { BalanceNotice } from "@/components/BalanceNotice";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { DateTimePicker } from "@/components/DateTimePicker";
 import { EmptyState } from "@/components/TransactionRow";
-import { UserMenu } from "@/components/UserMenu";
+import { SubHeader } from "@/components/ui";
+import { ViewAllButton, useViewAll } from "@/components/ViewAll";
 import { sanitizeAmount } from "@/components/AmountForm";
 import { possibleDuplicate, suggestCategory, type CapturedItem } from "@/lib/captureMatch";
 import { categories, moreCategories, paymentMethods, primaryCategories, type CategoryId } from "@/lib/data";
@@ -22,16 +23,11 @@ const initialKind = (item: CapturedItem): Kind =>
 
 export default function ReviewPage() {
   const { captured } = useAppData();
+  const list = useViewAll(captured);
   return (
     <div className="pb-10">
-      <header className="sticky top-0 z-20 flex items-center gap-4 bg-surface-container-lowest/90 px-5 py-4 backdrop-blur">
-        <Link href="/" aria-label="Back" className="rounded-full p-2 hover:bg-surface-container">
-          <ArrowLeft className="size-6" />
-        </Link>
-        <h1 className="flex-1 text-2xl font-semibold tracking-tight">To review</h1>
-        <UserMenu />
-      </header>
-      <main className="space-y-4 px-5 pt-2">
+      <SubHeader title="To review" backHref="/" />
+      <main className="space-y-4 px-5 pt-2 md:px-8">
         {captured.length === 0 ? (
           <EmptyState
             icon={Inbox}
@@ -46,9 +42,12 @@ export default function ReviewPage() {
         ) : (
           <>
             <p className="px-1 text-sm text-on-surface-variant">Check each one, then add it. Nothing counts in your totals until you do.</p>
-            {captured.map((item) => (
-              <ReviewCard key={item.id} item={item} />
-            ))}
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start">
+              {list.shown.map((item) => (
+                <ReviewCard key={item.id} item={item} />
+              ))}
+            </div>
+            <ViewAllButton list={list} />
           </>
         )}
       </main>
@@ -182,7 +181,7 @@ function ReviewCard({ item }: { item: CapturedItem }) {
                 key={id}
                 aria-pressed={on}
                 onClick={() => setCategory(id)}
-                className={`flex aspect-square flex-col items-center justify-center gap-1 rounded-xl px-1 text-center text-xs leading-tight transition ${
+                className={`flex aspect-square flex-col items-center justify-center gap-1 rounded-xl px-1 text-center text-xs sm:aspect-auto sm:py-3 leading-tight transition ${
                   on ? "bg-primary text-on-primary" : "bg-surface-container-low hover:bg-surface-container"
                 }`}
               >
@@ -194,7 +193,7 @@ function ReviewCard({ item }: { item: CapturedItem }) {
           <button
             aria-expanded={showMore}
             onClick={() => setShowMore((v) => !v)}
-            className="flex aspect-square flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-outline-variant px-1 text-center text-xs leading-tight font-medium text-primary"
+            className="flex aspect-square flex-col items-center justify-center gap-1 rounded-xl border sm:aspect-auto sm:py-3 border-dashed border-outline-variant px-1 text-center text-xs leading-tight font-medium text-primary"
           >
             {showMore ? <ChevronsUp className="size-5" aria-hidden /> : <ChevronsDown className="size-5" aria-hidden />}
             {showMore ? "Show less" : "Show more"}

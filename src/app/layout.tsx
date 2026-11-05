@@ -21,7 +21,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en" className={`${hanken.variable} ${jetbrains.variable}`}>
       <body className="antialiased">
-        <div className="mx-auto min-h-dvh max-w-md bg-surface">{children}</div>
+        <div className="min-h-dvh bg-surface">{children}</div>
       </body>
     </html>
   );

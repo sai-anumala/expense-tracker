@@ -4,7 +4,7 @@
 > Read this first; it should answer most questions without exploring the code.
 > **Keep it current:** any change to behaviour, data model, API, env vars, or deployment must update the relevant section here **in the same commit** (see [§15](#15-maintaining-this-file)).
 
-Last updated: 2026-11-05 · Branch model: `develop` → `main` · Live: <https://expense-tracker-sage-six-21.vercel.app>
+Last updated: 2026-11-06 · Branch model: `develop` → `main` · Live: <https://expense-tracker-sage-six-21.vercel.app>
 
 ---
 
@@ -33,7 +33,7 @@ Last updated: 2026-11-05 · Branch model: `develop` → `main` · Live: <https:/
 
 ## 1. What it is
 
-**Ledgerly** is a mobile-first, multi-user personal expense tracker. Anyone can sign up; each user has their own:
+**Ledgerly** is a mobile-first, responsive (phone to large monitor), multi-user personal expense tracker. Anyone can sign up; each user has their own:
 - **Transactions** (expenses and income, with category, date/time, payment method, note)
 - **Total available balance** (cash they have, entered at a point in time; only later transactions change it)
 - **Budget** (overall monthly limit and optional per-category limits)
@@ -167,7 +167,7 @@ API route handlers (Node runtime, src/app/api/**)
 src/
 ├─ middleware.ts                 Auth gate for pages + API (see §10). PUBLIC_API list lives here
 ├─ app/
-│  ├─ layout.tsx                 Root: fonts, metadata/viewport, centered max-w-md column. NO data provider
+│  ├─ layout.tsx                 Root: fonts, metadata/viewport. NO data provider
 │  ├─ globals.css                Tailwind v4 @theme tokens (colors, fonts, radii), utilities `label-caps`, `card`
 │  ├─ error.tsx                  Page-level error boundary ("Something went wrong", Try again / Overview)
 │  ├─ global-error.tsx           Root-layout failure fallback (inline styles, own <html>)
@@ -205,7 +205,8 @@ src/
 │  ├─ ui.tsx                     AppHeader (logo, NotificationBell, UserMenu; + OverviewAlertBanner below the header on "/"), Logo, IconTile, MonthPill [no-op], ProgressBar, SectionTitle
 │  ├─ NotificationBell.tsx       🔔 with urgent+warning count badge → reminders panel (outside click / Esc closes); useAlerts(), alertIcons, severityTile
 │  ├─ AlertBanner.tsx            Slim dismissible banner with the top urgent/warning reminder; OverviewAlertBanner shows it only on "/"
-│  ├─ BottomNav.tsx              Fixed bottom nav (Overview, Analytics, [+], Budgets, Loans); TabPage wrapper
+│  ├─ BottomNav.tsx              Bottom nav on phones (Overview, Analytics, [+], Budgets, Loans); TabPage wrapper
+│  ├─ SideNav.tsx                Side rail / sidebar from md (replaces the bottom nav)
 │  ├─ SwipeActions.tsx           Generic swipe-left row (drag/tap/Enter reveals action buttons; one open app-wide)
 │  ├─ TransactionRow.tsx         Transaction row on SwipeActions (View · Edit · Delete), details pop-up, delete confirm; EmptyState
 │  ├─ TransferRow.tsx            Transfer row on SwipeActions (blue ⇄ tile, neutral amount; View · Edit · Delete), details pop-up, TransferIcon
@@ -555,14 +556,17 @@ Gmail only: no SMS and no inbound email service. A Google Apps Script in the use
 - **Transaction rows** (Overview recent list, Accounts history; built on `SwipeActions`): **swipe left** (touch or mouse drag) or **tap / Enter** to reveal three actions: **View** (read-only details pop-up with an Edit button), **Edit** (`/add?id=…`), **Delete** (confirm dialog, "Yes, delete"). Only one row is open at a time (window event `ledgerly:row-open`); vertical scrolling stays native (`touch-action: pan-y`). Rows no longer navigate on tap.
 - **Monthly Budget card:** app font with tabular digits; the spent/cap row and the "Daily safe pace" row wrap on narrow phones, with "N days left" in its own pill so they never collide.
 - **Budgets:** Set Limit (inline AmountForm), add category budget (chips + amount). Category cards use **SwipeActions**: swipe left / tap → **Edit** (inline limit form under the card) and **Delete** (confirm dialog). Card layout is two rows (name ↔ spent / limit; left/over ↔ status badge) with truncation and wrapping so nothing overlaps on small phones.
-- **Loans tab** (`/loans`): summary cards, **I lent money** / **I borrowed** buttons → `/loans/new?dir=…`, Open/Settled tabs, **Download all loans (CSV)** at the end, cards with progress bar, Overdue badge, next payment and repay-by date. Tap → detail.
+- **Loans tab** (`/loans`): summary cards, **I lent money** / **I borrowed** buttons → `/loans/new?dir=…`, Open/Settled tabs, **Download all loans (CSV)** at the end (from `lg`: summary and buttons left, tabs and list right, so the tabs match the list's width), cards with progress bar, Overdue badge, next payment and repay-by date. Tap → detail.
 - **Loan form** (`/loans/new`, `?id=` to edit): I lent / I borrowed tabs, big amount, optional **Total to repay** (interest/fees), name, source chips (Friend, Relative, Online app, Bank, Other), date (DateTimePicker), payment method (default UPI), optional **Repay by** (native date input), optional **Monthly repayment plan** (amount + day 1–28), note. Edit → confirm dialog.
 - **Loan detail** (`/loans/[id]`): outstanding (hero), progress, details (dates, plan, next payment, note); **Record repayment** with **Settle in full · ₹X** and **Monthly · ₹Y** quick-fill chips, date, method, note → confirm ("Record & settle loan" when it clears the balance); repayment history with remove (confirm); **Download <person>'s statement (CSV)** (covers every loan with that person; a hint shows how many others are included); Edit loan; Delete loan (danger confirm).
-- **Header:** logo + subtitle, **NotificationBell**, UserMenu (initials → name/email, **Change password**, Log out).
+- **Header:** logo + subtitle (screen name only from `md`, where the logo is in `SideNav`), **NotificationBell**, UserMenu (initials → name/email, **Change password**, Log out).
 - **Bell:** red badge (amber when nothing is urgent) with the number of urgent + warning reminders (`aria-label` "Notifications, N new"; "9+" over 9). Tap opens a "Reminders" panel (closes on outside click, Esc, or following a link) listing every reminder with icon, title, body and severity colour (urgent = secondary/red, warning = tertiary/amber, info = neutral); each row links to its screen. Empty: "You're all caught up ✓". Rules in §11 "Reminders".
 - **Overview banner** (`AlertBanner`, rendered by `AppHeader` only when the path is `/`): the single most important urgent/warning reminder as a slim row under the header (tap → its screen, × dismisses). Dismissal is in memory for the browser tab only (module-level set by alert id: survives tab switches, cleared on reload; no localStorage); the next reminder then shows. motion-safe fade-in.
 - **Change password dialog** (`components/ChangePasswordDialog.tsx`, from the account menu): compact centered `<dialog>` (rounded-2xl, `w-[min(22rem,calc(100%-2rem))]`) with Current password, New password (show/hide toggle for all fields, "At least 8 characters" hint), Confirm new password. Client checks (required, length, match, different) then server errors inline (`role="alert"`); busy "Saving…"; success shows "Password changed" (motion-safe pop) and closes after ~1.8 s or on Done. Esc / backdrop / Cancel close it (not while busy). No extra confirm dialog: entering the current password is the confirmation.
-- **Bottom nav:** Overview, Analytics, [+ FAB → /add], Budgets, **Loans**. Accounts is reached via "View All" on Recent Transactions. Quick actions: Add Expense, Add Income, **Credit Card** (→ `/card`), Lend / Borrow. Transfer is reached from the Credit Card screen ("Pay bill" and a "Transfer between your accounts" link).
+- **Side nav** (`components/SideNav.tsx`, from `md`; icon rail, labelled sidebar from `xl`): logo, Add transaction, the four main tabs, then Credit Card, Transfer, Accounts, and To review with a count while there are alerts.
+- **Lists show 5 items** (`LIST_LIMIT` in `components/ViewAll.tsx`), then **View all (N)** / **Show less** in place: Category Breakdown legend (the ring still shows every slice), Top Merchants, Loans, Repayments, Category Budgets, Transfers, Credit Card cycle lists, Accounts' payment methods, To review. Overview's Recent Transactions shows 5 and links to Accounts; **Accounts' transaction list is uncapped because it is that "View All" destination**. New lists should use `useViewAll` + `ViewAllButton`.
+- **Row hints** (`RowHint`): "Swipe a … left (or tap it)" on touch screens, "Click a …" with a mouse (`pointer-fine:`).
+- **Bottom nav** (phones only, below `md`): Overview, Analytics, [+ FAB → /add], Budgets, **Loans**. Accounts is reached via "View All" on Recent Transactions. Quick actions: Add Expense, Add Income, **Credit Card** (→ `/card`), Lend / Borrow. Transfer is reached from the Credit Card screen ("Pay bill" and a "Transfer between your accounts" link).
 - **Overview balance card:** under the figure, once, the card-due info prompt with **Update balance**. The editor has two fields (balance + unpaid credit card amount). A separate **Credit Card** card follows it (see §11; links to `/card`).
 - **Credit Card** (`/card`): not set up → intro (3 bullets), **setup form**: Statement day + Bill due day selects (1st–28th, must differ; hint "due on the due day of the same/next month"), optional Credit limit; also shows what's currently owed if anything. Set up → hero **Bill to pay** (₹billOutstanding; red when overdue) with a badge "Due 5 Nov · in 2 days" (amber ≤ 5 days, red "Overdue", green "All paid"), statement line, **Pay bill ₹X** (or **Pay early ₹due** when no bill but something is owed) → `/transfer?from=bank&to=card&amount=X`; tiles **Unbilled** (next statement date) and **Total due** (or **Card credit** when overpaid); **Credit limit** bar (`% used`, amber ≥ 80%, "₹X of ₹limit", available credit) when a limit is set; lists **This cycle (unbilled)** and **Last statement** using `TransactionRow`/`TransferRow` swipe rows (empty states); details line + **Edit card** (same form inline) and **Remove card** (danger ConfirmDialog; transactions/transfers kept). A "Transfer between your accounts" link sits at the end. Fade-up entrance is `motion-safe:`.
 - **Transfer** (`/transfer`, `/transfer?id=…` to edit, `/transfer?from=bank&to=card&amount=1234.50` to prefill a NEW transfer via `transferPrefill`; bad params fall back to Bank → Cash, empty amount): compact animated header (From-account icon → coins → To-account icon, dashed line; `motion-safe:`), **From** and **To** chip rows (Bank, UPI, Cash, Credit Card) with a swap button; the From account is disabled in the To row, and picking the current To as From swaps them. Blue hint for card bill payments (To = Credit Card) and card cash withdrawals (From = Credit Card); amber low-balance warning under the amount when a bill payment is more than the available balance (non-blocking). Big amount input (same style as Add Expense, `sanitizeAmount`), DateTimePicker, optional note (≤ 120). New → saves directly, shows a "Saved …" status and resets the form; Edit → "Save changes to this transfer?" confirm, then back to `/transfer`. Server errors inline (`role="alert"`). Unknown id → "Transfer not found". Below: "Your transfers" history (newest first) with "This month: N transfers · ₹X", rows via `TransferRow`; empty state. Not in the bottom nav (a 6th item would crowd small phones). All animations use `motion-safe:` (keyframes `ledgerly-travel/float/shimmer/fade-up/dash/pop/ring/progress/fade-in` in `globals.css`).
@@ -591,7 +595,13 @@ Tokens are defined in `src/app/globals.css` under `@theme` and used as Tailwind 
 
 - Utilities: `label-caps` (11px, 600, 0.06em, uppercase), `card` (white, rounded-xl, soft shadow).
 - **All numbers/amounts use the app font (Hanken Grotesk) with `tabular-nums`** (even-width digits); `font-mono`/JetBrains Mono is no longer used for numbers (only the error reference code). Big figures: balance hero 36px bold (cents in `on-surface-variant`, two blurred glow blobs); Add/Edit amount input `text-5xl font-bold` (₹ in `text-outline`).
-- Layout: single centered column `max-w-md`; light theme only.
+- Layout (light theme only), by width. **Phone DOM order is the source order at every width**; new screens should follow these patterns:
+  - `< md` (768px): one column, `BottomNav`.
+  - `md`: `SideNav` icon rail (`w-20`) replaces the bottom bar; `AppHeader` shows the screen name instead of the logo.
+  - `lg` (1024px): `PageColumns` (`components/ui.tsx`) gives two columns (5/7) on data screens.
+  - `xl` (1280px): `SideNav` becomes a labelled sidebar (`w-64`). Page content is capped at `max-w-6xl` (`96rem` from 1920px).
+  - Forms stay narrow at every width (`/add`, `/loans/new`, card setup: `max-w-xl`; `/capture`: `max-w-2xl`; login/sign-up: `max-w-md`).
+  - Components that depend on their own width rather than the screen's use container queries (`@container`, e.g. the Overview balance tiles).
 
 ---
 

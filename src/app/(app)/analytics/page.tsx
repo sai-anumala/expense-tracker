@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { CalendarDays, TrendingDown, TrendingUp, Lightbulb, Download, ChartSpline } from "lucide-react";
 import { AppHeader, IconTile } from "@/components/ui";
 import { TabPage } from "@/components/BottomNav";
+import { ViewAllButton, useViewAll } from "@/components/ViewAll";
 import { EmptyState } from "@/components/TransactionRow";
 import { categories, type CategoryId, type Transaction } from "@/lib/data";
 import { useAppData } from "@/lib/store";
@@ -47,7 +48,8 @@ export default function Analytics() {
     document.addEventListener("pointerdown", onDown);
     return () => document.removeEventListener("pointerdown", onDown);
   }, [active]);
-  const merchants = topMerchants(current);
+  const merchants = useViewAll(topMerchants(current, Infinity));
+  const legend = useViewAll(slices);
   const weeks = weeklySpend(transactions);
   const weekTarget = budget.monthlyLimit > 0 ? (budget.monthlyLimit * 12) / 52 : 0;
   const insight = categoryInsight(transactions);
@@ -57,7 +59,7 @@ export default function Analytics() {
     <>
       <AppHeader subtitle="Analytics" />
       <TabPage>
-        <div role="tablist" className="grid grid-cols-3 rounded-full bg-surface-container-high p-1.5">
+        <div role="tablist" className="grid grid-cols-3 rounded-full bg-surface-container-high p-1.5 md:max-w-sm">
           {(["week", "month", "year"] as const).map((r) => (
             <button
               key={r}
@@ -73,58 +75,59 @@ export default function Analytics() {
           ))}
         </div>
 
-        {/* Total */}
-        <section className="card p-5">
-          <div className="flex items-center justify-between">
-            <p className="label-caps text-on-surface-variant">Total spent this {range}</p>
-            <CalendarDays className="size-5 text-on-surface-variant" aria-hidden />
-          </div>
-          <div className="mt-2 flex items-center justify-between">
-            <p className="text-5xl font-bold tracking-tight">
-              <span className="mr-1 align-middle text-2xl font-normal text-on-surface-variant">{CURRENCY_SYMBOL}</span>
-              {whole}.{cents}
-            </p>
-            {change !== null && (
-              <span
-                className={`flex items-center gap-1 rounded-full bg-surface-container px-3 py-1 tabular-nums text-sm font-semibold ${
-                  change <= 0 ? "text-primary" : "text-secondary"
-                }`}
-              >
-                {change <= 0 ? <TrendingDown className="size-4" aria-hidden /> : <TrendingUp className="size-4" aria-hidden />}
-                {Math.abs(Math.round(change))}%
-              </span>
-            )}
-          </div>
-          <div className="mt-3 flex justify-between gap-3 text-sm">
-            <span className="text-on-surface-variant">
-              Previous {range}: <b className="tabular-nums text-on-surface">{money(prevTotal)}</b>
-            </span>
-            {monthBudgetDelta !== null && (
-              <span className={monthBudgetDelta >= 0 ? "text-primary" : "text-secondary"}>
-                {monthBudgetDelta >= 0 ? "Under" : "Over"} budget by {money(monthBudgetDelta)}
-              </span>
-            )}
-          </div>
-        </section>
-
-        {insight && (
-          <section className="flex gap-4 rounded-xl bg-surface-container-low p-5">
-            <span className="grid size-12 shrink-0 place-items-center rounded-full bg-surface-container-high text-primary">
-              <Lightbulb className="size-5" aria-hidden />
-            </span>
-            <div>
-              <p className="label-caps text-primary">Spending Insight</p>
-              <p className="mt-1">
-                You spent{" "}
-                <span className={`font-medium ${insight.pct < 0 ? "text-primary" : "text-secondary"}`}>
-                  {Math.abs(Math.round(insight.pct))}% {insight.pct < 0 ? "less" : "more"}
-                </span>{" "}
-                on {categories[insight.category].long.toLowerCase()} this month than last month.
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-[repeat(auto-fit,minmax(20rem,1fr))]">
+          {/* Total */}
+          <section className="card p-5">
+            <div className="flex items-center justify-between">
+              <p className="label-caps text-on-surface-variant">Total spent this {range}</p>
+              <CalendarDays className="size-5 text-on-surface-variant" aria-hidden />
+            </div>
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-4xl font-bold tracking-tight min-[360px]:text-5xl">
+                <span className="mr-1 align-middle text-2xl font-normal text-on-surface-variant">{CURRENCY_SYMBOL}</span>
+                {whole}.{cents}
               </p>
+              {change !== null && (
+                <span
+                  className={`flex items-center gap-1 rounded-full bg-surface-container px-3 py-1 tabular-nums text-sm font-semibold ${
+                    change <= 0 ? "text-primary" : "text-secondary"
+                  }`}
+                >
+                  {change <= 0 ? <TrendingDown className="size-4" aria-hidden /> : <TrendingUp className="size-4" aria-hidden />}
+                  {Math.abs(Math.round(change))}%
+                </span>
+              )}
+            </div>
+            <div className="mt-3 flex flex-wrap justify-between gap-x-3 gap-y-1 text-sm">
+              <span className="text-on-surface-variant">
+                Previous {range}: <b className="tabular-nums text-on-surface">{money(prevTotal)}</b>
+              </span>
+              {monthBudgetDelta !== null && (
+                <span className={monthBudgetDelta >= 0 ? "text-primary" : "text-secondary"}>
+                  {monthBudgetDelta >= 0 ? "Under" : "Over"} budget by {money(monthBudgetDelta)}
+                </span>
+              )}
             </div>
           </section>
-        )}
 
+          {insight && (
+            <section className="flex gap-4 rounded-xl bg-surface-container-low p-5">
+              <span className="grid size-12 shrink-0 place-items-center rounded-full bg-surface-container-high text-primary">
+                <Lightbulb className="size-5" aria-hidden />
+              </span>
+              <div>
+                <p className="label-caps text-primary">Spending Insight</p>
+                <p className="mt-1">
+                  You spent{" "}
+                  <span className={`font-medium ${insight.pct < 0 ? "text-primary" : "text-secondary"}`}>
+                    {Math.abs(Math.round(insight.pct))}% {insight.pct < 0 ? "less" : "more"}
+                  </span>{" "}
+                  on {categories[insight.category].long.toLowerCase()} this month than last month.
+                </p>
+              </div>
+            </section>
+          )}
+        </div>
         {/* Guard on expenses (not all transactions): an income-only period has nothing to chart. */}
         {breakdown.length === 0 || !shown ? (
           <EmptyState
@@ -133,13 +136,12 @@ export default function Analytics() {
             body="Once you add expenses, your category breakdown and top merchants will appear here."
           />
         ) : (
-          <>
-            {/* Donut */}
-            <section className="card p-5">
-              <h2 className="text-[22px] font-semibold tracking-tight">Category Breakdown</h2>
-              <p className="text-sm text-on-surface-variant">Where your money went this {range}</p>
-              <div ref={chartRef}>
-                <div className="relative mx-auto my-6 size-56">
+          <section className="card p-5">
+            <h2 className="text-[22px] font-semibold tracking-tight">Category Breakdown</h2>
+            <p className="text-sm text-on-surface-variant">Where your money went this {range}</p>
+            <div ref={chartRef} className="md:grid md:grid-cols-[14rem_minmax(0,1fr)] md:items-center md:gap-8">
+              <div>
+                <div className="relative mx-auto my-6 aspect-square w-full max-w-56">
                   <Donut slices={slices} total={total} active={active} onActive={setActive} />
                   {/* Centre label: focused slice, otherwise the top category. Doesn't block the ring. */}
                   <div className="pointer-events-none absolute inset-0 grid place-content-center px-10 text-center" aria-live="polite">
@@ -151,9 +153,11 @@ export default function Analytics() {
                   </div>
                 </div>
                 <p className="-mt-3 mb-3 text-center text-xs text-on-surface-variant">Tap or hover a slice to see its category.</p>
-                {/* Legend: one row per slice, same colours and order as the ring */}
+              </div>
+              {/* Legend: one row per slice, same colours and order as the ring */}
+              <div className="min-w-0">
                 <ul className="divide-y divide-surface-container rounded-xl bg-surface-container-low px-4">
-                  {slices.map((sl) => {
+                  {legend.shown.map((sl) => {
                     const share = total > 0 ? sl.amount / total : 0;
                     const dim = activeSlice && activeSlice.key !== sl.key;
                     return (
@@ -187,15 +191,19 @@ export default function Analytics() {
                     );
                   })}
                 </ul>
+                <ViewAllButton list={legend} />
               </div>
-            </section>
+            </div>
+          </section>
+        )}
 
-            {/* Merchants */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[repeat(auto-fit,minmax(20rem,1fr))] lg:items-start">
+          {breakdown.length > 0 && (
             <section className="card p-5">
               <h2 className="text-[22px] font-semibold tracking-tight">Top Merchants</h2>
               <p className="mb-4 text-sm text-on-surface-variant">Highest spending this {range}</p>
               <ul className="space-y-2">
-                {merchants.map((m) => (
+                {merchants.shown.map((m) => (
                   <li key={m.name} className="flex items-center gap-4 rounded-lg bg-surface-container-low p-4">
                     <IconTile icon={categories[m.category].icon} tone={categories[m.category].tone} round size="sm" />
                     <div className="min-w-0 flex-1">
@@ -211,23 +219,24 @@ export default function Analytics() {
                   </li>
                 ))}
               </ul>
+              <ViewAllButton list={merchants} />
             </section>
-          </>
-        )}
+          )}
 
-        {/* Weekly trend (always last 4 weeks) */}
-        <section className="card p-5">
-          <h2 className="text-[22px] font-semibold tracking-tight">Weekly Spending Trend</h2>
-          <p className="text-sm text-on-surface-variant">
-            Last 4 weeks{weekTarget > 0 && `, paced against ${money(weekTarget)}/wk from your budget`}
-          </p>
-          <WeeklyBars weeks={weeks} target={weekTarget} />
-        </section>
+          {/* Weekly trend (always last 4 weeks) */}
+          <section className="card p-5">
+            <h2 className="text-[22px] font-semibold tracking-tight">Weekly Spending Trend</h2>
+            <p className="text-sm text-on-surface-variant">
+              Last 4 weeks{weekTarget > 0 && `, paced against ${money(weekTarget)}/wk from your budget`}
+            </p>
+            <WeeklyBars weeks={weeks} target={weekTarget} />
+          </section>
+        </div>
 
         <button
           onClick={() => downloadTransactionsCsv(transactions)}
           disabled={transactions.length === 0}
-          className="flex w-full items-center justify-center gap-3 rounded-xl bg-surface-container-low py-4 disabled:opacity-50"
+          className="flex w-full items-center justify-center gap-3 rounded-xl bg-surface-container-low py-4 disabled:opacity-50 md:mx-auto md:w-fit md:px-8"
         >
           <Download className="size-5" aria-hidden /> Download Transactions (CSV)
         </button>
@@ -391,7 +400,7 @@ function WeeklyBars({ weeks, target }: { weeks: { start: Date; amount: number; c
           </span>
         </div>
       )}
-      <div className={`absolute inset-0 grid grid-cols-4 items-end gap-6 pr-2 ${target > 0 ? "pl-10" : "pl-2"}`}>
+      <div className={`absolute inset-0 grid grid-cols-4 items-end gap-6 pr-2 ${target > 0 ? "pl-14" : "pl-2"}`}>
         {weeks.map((w) => (
           <div key={w.start.toISOString()} className="flex flex-col items-center gap-2">
             {w.current && (

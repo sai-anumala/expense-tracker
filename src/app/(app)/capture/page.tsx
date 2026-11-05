@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ArrowLeft, Check, Copy, Mail } from "lucide-react";
+import { Check, Copy, Mail } from "lucide-react";
 import { BalanceNotice } from "@/components/BalanceNotice";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
-import { UserMenu } from "@/components/UserMenu";
+import { SubHeader } from "@/components/ui";
 import { buildGmailScript } from "@/lib/gmailScript";
 import { errorMessage, useAppData, type CaptureStatus } from "@/lib/store";
 
@@ -71,15 +71,9 @@ export default function CapturePage() {
 
   return (
     <div className="pb-10">
-      <header className="sticky top-0 z-20 flex items-center gap-4 bg-surface-container-lowest/90 px-5 py-4 backdrop-blur">
-        <Link href="/" aria-label="Back" className="rounded-full p-2 hover:bg-surface-container">
-          <ArrowLeft className="size-6" />
-        </Link>
-        <h1 className="flex-1 text-2xl font-semibold tracking-tight">Gmail auto-capture</h1>
-        <UserMenu />
-      </header>
+      <SubHeader title="Gmail auto-capture" backHref="/" />
 
-      <main className="space-y-4 px-5 pt-2">
+      <main className="mx-auto w-full max-w-2xl space-y-4 px-5 pt-2 md:px-0">
         <section className="card space-y-3 p-5">
           <span className="grid size-10 place-items-center rounded-lg bg-primary-fixed/50">
             <Mail className="size-5 text-primary" aria-hidden />
