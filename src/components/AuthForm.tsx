@@ -6,16 +6,11 @@ import { useState } from "react";
 import { Eye, EyeOff, Mail, LockKeyhole, UserRound } from "lucide-react";
 import { Logo } from "./ui";
 import { api, errorMessage } from "@/lib/store";
+import { safeNext } from "@/lib/safeNext";
 
 type Mode = "login" | "signup";
 
 /** Only allow same-site relative redirects (prevents open redirects via ?next=). */
-function safeNext(raw: string | null) {
-  return raw && raw.startsWith("/") && !raw.startsWith("//") && !raw.startsWith("/login") && !raw.startsWith("/signup")
-    ? raw
-    : "/";
-}
-
 export function AuthForm({ mode }: { mode: Mode }) {
   const params = useSearchParams();
   const next = safeNext(params.get("next"));
