@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { KeyRound, LogOut, Mail } from "lucide-react";
+import { KeyRound, LogOut, Mail, Tag } from "lucide-react";
 import { useAppData } from "@/lib/store";
 import { ChangePasswordDialog } from "./ChangePasswordDialog";
 
@@ -53,6 +53,14 @@ export function UserMenu() {
             <p className="truncate font-semibold">{user.name}</p>
             <p className="truncate text-sm text-on-surface-variant">{user.email}</p>
           </div>
+          <Link
+            role="menuitem"
+            href="/categories"
+            onClick={() => setOpen(false)}
+            className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-surface-container-low"
+          >
+            <Tag className="size-4 text-on-surface-variant" aria-hidden /> Your categories
+          </Link>
           <Link
             role="menuitem"
             href="/capture"

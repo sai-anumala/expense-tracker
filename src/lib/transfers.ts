@@ -84,6 +84,10 @@ export function mergeFeed<T extends { date: string }>(transactions: T[], transfe
   return items.sort((a, b) => time(b.date) - time(a.date));
 }
 
+/** What kind of transfer this is, for titles and search. */
+export const transferType = (t: Pick<Transfer, "from" | "to">) =>
+  isCardBill(t) ? "Card bill payment" : isCardAdvance(t) ? "Card cash withdrawal" : "Transfer";
+
 /** Transfers dated within [start, end): count and total moved. */
 export function transferTotals(list: Transfer[], [start, end]: [Date, Date]) {
   let count = 0;

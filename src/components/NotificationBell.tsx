@@ -16,11 +16,11 @@ export const severityTile: Record<AlertSeverity, string> = {
 
 /** Current reminders from the signed-in user's data (recomputed when the data changes). */
 export function useAlerts(): Alert[] {
-  const { transactions, transfers, loans, budget, settings, captured } = useAppData();
+  const { transactions, transfers, loans, budget, settings, captured, customCategories } = useAppData();
   const pendingReview = captured.length;
   return useMemo(
-    () => buildAlerts({ transactions, transfers, loans, budget, settings, pendingReview }),
-    [transactions, transfers, loans, budget, settings, pendingReview],
+    () => buildAlerts({ transactions, transfers, loans, budget, settings, pendingReview, customCategories }),
+    [transactions, transfers, loans, budget, settings, pendingReview, customCategories],
   );
 }
 

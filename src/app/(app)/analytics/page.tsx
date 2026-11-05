@@ -6,7 +6,7 @@ import { AppHeader, IconTile } from "@/components/ui";
 import { TabPage } from "@/components/BottomNav";
 import { ViewAllButton, useViewAll } from "@/components/ViewAll";
 import { EmptyState } from "@/components/TransactionRow";
-import { categories, type CategoryId, type Transaction } from "@/lib/data";
+import type { CategoryId, CategoryInfo, Transaction } from "@/lib/data";
 import { useAppData } from "@/lib/store";
 import {
   categoryInsight,
@@ -22,7 +22,7 @@ import { csvAmount, csvDateTime, downloadCsv, todayStamp } from "@/lib/csv";
 import { CURRENCY_SYMBOL, money, moneyWhole } from "@/lib/format";
 
 export default function Analytics() {
-  const { transactions, budget } = useAppData();
+  const { transactions, budget, categoryOf } = useAppData();
   const [range, setRange] = useState<Range>("month");
 
   const current = within(transactions, periodBounds(range));
@@ -34,7 +34,7 @@ export default function Analytics() {
   const breakdown = spentByCategory(current);
   // Ring: top 7 categories + "More categories" (rest folded), coloured in ring order from a
   // colour-blind-checked palette. `active` = hovered/tapped slice key, or null (nothing focused).
-  const slices = ringSlices(breakdown);
+  const slices = ringSlices(breakdown, categoryOf);
   const [active, setActive] = useState<string | null>(null);
   const activeSlice = slices.find((sl) => sl.key === active) ?? null;
   const shown = activeSlice ?? slices[0];
@@ -122,7 +122,7 @@ export default function Analytics() {
                   <span className={`font-medium ${insight.pct < 0 ? "text-primary" : "text-secondary"}`}>
                     {Math.abs(Math.round(insight.pct))}% {insight.pct < 0 ? "less" : "more"}
                   </span>{" "}
-                  on {categories[insight.category].long.toLowerCase()} this month than last month.
+                  on {categoryOf(insight.category).long.toLowerCase()} this month than last month.
                 </p>
               </div>
             </section>
@@ -175,7 +175,7 @@ export default function Analytics() {
                             {sl.label}
                             {sl.members && (
                               <span className="block text-xs font-normal text-on-surface-variant">
-                                {sl.members.map((m) => categories[m].long).join(", ")}
+                                {sl.members.map((m) => categoryOf(m).long).join(", ")}
                               </span>
                             )}
                           </span>
@@ -205,11 +205,11 @@ export default function Analytics() {
               <ul className="space-y-2">
                 {merchants.shown.map((m) => (
                   <li key={m.name} className="flex items-center gap-4 rounded-lg bg-surface-container-low p-4">
-                    <IconTile icon={categories[m.category].icon} tone={categories[m.category].tone} round size="sm" />
+                    <IconTile icon={categoryOf(m.category).icon} tone={categoryOf(m.category).tone} round size="sm" />
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-semibold">{m.name}</p>
                       <p className="text-sm text-on-surface-variant">
-                        {m.count} {m.count === 1 ? "transaction" : "transactions"} • {categories[m.category].long}
+                        {m.count} {m.count === 1 ? "transaction" : "transactions"} • {categoryOf(m.category).long}
                       </p>
                     </div>
                     <div className="text-right">
@@ -234,7 +234,7 @@ export default function Analytics() {
         </div>
 
         <button
-          onClick={() => downloadTransactionsCsv(transactions)}
+          onClick={() => downloadTransactionsCsv(transactions, categoryOf)}
           disabled={transactions.length === 0}
           className="flex w-full items-center justify-center gap-3 rounded-xl bg-surface-container-low py-4 disabled:opacity-50 md:mx-auto md:w-fit md:px-8"
         >
@@ -246,7 +246,7 @@ export default function Analytics() {
 }
 
 /** Transactions CSV: readable local dates, plain-number amounts (expense negative), newest first. */
-function downloadTransactionsCsv(list: Transaction[]) {
+function downloadTransactionsCsv(list: Transaction[], categoryOf: (id: string) => CategoryInfo) {
   const rows = [
     ["Date", "Type", "Merchant / note", "Category", "Payment method", "Amount (INR)"],
     ...[...list]
@@ -255,7 +255,7 @@ function downloadTransactionsCsv(list: Transaction[]) {
         csvDateTime(t.date),
         t.amount < 0 ? "Expense" : "Income",
         t.merchant,
-        categories[t.category]?.long ?? t.category,
+        categoryOf(t.category).long,
         t.account ?? "",
         csvAmount(t.amount),
       ]),
@@ -274,17 +274,17 @@ const MORE_COLOR = "#b4bac3"; // neutral grey for the folded "More categories" s
 type Slice = { key: string; label: string; amount: number; color: string; members?: CategoryId[] };
 
 /** Top 7 categories by spend get palette slots; the rest fold into one "More categories" slice. */
-function ringSlices(breakdown: { category: CategoryId; amount: number }[]): Slice[] {
+function ringSlices(breakdown: { category: CategoryId; amount: number }[], categoryOf: (id: string) => CategoryInfo): Slice[] {
   const top = breakdown.slice(0, RING_COLORS.length).map((b, i) => ({
     key: b.category,
-    label: categories[b.category].long,
+    label: categoryOf(b.category).long,
     amount: b.amount,
     color: RING_COLORS[i],
   }));
   const rest = breakdown.slice(RING_COLORS.length);
   if (rest.length === 0) return top;
   if (rest.length === 1) {
-    return [...top, { key: rest[0].category, label: categories[rest[0].category].long, amount: rest[0].amount, color: MORE_COLOR }];
+    return [...top, { key: rest[0].category, label: categoryOf(rest[0].category).long, amount: rest[0].amount, color: MORE_COLOR }];
   }
   return [
     ...top,

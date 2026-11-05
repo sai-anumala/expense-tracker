@@ -3,6 +3,7 @@ import { isValidObjectId } from "mongoose";
 import { connectDb } from "@/lib/db";
 import { dbErrorResponse, fail, ok, readJsonObject, requireDb } from "@/lib/api";
 import { requireUser } from "@/lib/auth";
+import { MISSING_CATEGORY, ownsCategories } from "@/lib/categoryAccess";
 import { parseTransactionInput, toTransactionDto } from "@/lib/transactionInput";
 import { TransactionModel } from "@/models/Transaction";
 
@@ -29,6 +30,7 @@ export async function PUT(req: Request, { params }: Params) {
 
   try {
     await connectDb();
+    if (!(await ownsCategories(user.userId, [input.value.category]))) return fail(400, MISSING_CATEGORY);
     const { receiptName, ...fields } = input.value;
     const update: Record<string, unknown> = { $set: receiptName ? { ...fields, receiptName } : fields };
     // Clear the payment method if it was removed; keep an existing receipt unless a new one was attached.

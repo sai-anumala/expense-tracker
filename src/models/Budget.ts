@@ -1,6 +1,6 @@
 import { Schema, type InferSchemaType, type Model } from "mongoose";
 import { defineModel } from "./defineModel";
-import { CATEGORY_IDS } from "./Transaction";
+import { isCategoryId } from "./Transaction";
 
 const BudgetSchema = new Schema(
   {
@@ -11,7 +11,7 @@ const BudgetSchema = new Schema(
       type: [
         new Schema(
           {
-            category: { type: String, required: true, enum: CATEGORY_IDS },
+            category: { type: String, required: true, validate: { validator: isCategoryId, message: "Unknown category." } },
             limit: { type: Number, required: true, min: 0 },
           },
           { _id: false },

@@ -3,7 +3,17 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { DatabaseZap, RotateCw } from "lucide-react";
 import { Splash } from "@/components/Splash";
-import { emptyBudget, emptySettings, type Budget, type Settings, type Transaction } from "./data";
+import {
+  categoryInfo,
+  emptyBudget,
+  emptySettings,
+  type Budget,
+  type CategoryId,
+  type CategoryInfo,
+  type CustomCategory,
+  type Settings,
+  type Transaction,
+} from "./data";
 import type { CardSettings } from "./creditCard";
 import type { Loan } from "./loans";
 import type { Transfer, TransferInput } from "./transfers";
@@ -27,6 +37,15 @@ type Ctx = {
   remove: (id: string) => Promise<void>;
   budget: Budget;
   saveBudget: (b: Budget) => Promise<void>;
+  /** The user's own categories, A to Z. */
+  customCategories: CustomCategory[];
+  /** Label, icon and tone of any category, built-in or custom. */
+  categoryOf: (id: string) => CategoryInfo;
+  /** Finds or creates a category by name; a name that already exists reuses that category. */
+  ensureCategory: (name: string) => Promise<CategoryId>;
+  renameCategory: (id: string, name: string) => Promise<void>;
+  /** Its expenses move to Other and its budget is removed; amounts don't change. */
+  deleteCategory: (id: string) => Promise<void>;
   settings: Settings;
   /** Saves the balance (+ unpaid credit card amount, default 0); the server stamps balanceAsOf = now. */
   saveSettings: (s: { openingBalance: number | null; cardDueAtAnchor?: number }) => Promise<void>;
@@ -126,6 +145,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
   const [user, setUser] = useState<User | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [budget, setBudget] = useState<Budget>(emptyBudget);
+  const [customCategories, setCustomCategories] = useState<CustomCategory[]>([]);
   const [settings, setSettings] = useState<Settings>(emptySettings);
   const [loans, setLoans] = useState<Loan[]>([]);
   const [transfers, setTransfers] = useState<Transfer[]>([]);
@@ -143,7 +163,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
   const load = useCallback(async () => {
     setStatus("loading");
     try {
-      const [me, tx, b, s, ln, tr, cap] = await Promise.all([
+      const [me, tx, b, s, ln, tr, cap, cats] = await Promise.all([
         api<User>("/api/auth/me"),
         api<Transaction[]>("/api/transactions"),
         api<Budget>("/api/budget"),
@@ -151,6 +171,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
         api<Loan[]>("/api/loans"),
         api<Transfer[]>("/api/transfers"),
         api<CapturedItem[]>("/api/captured"),
+        api<CustomCategory[]>("/api/categories"),
       ]);
       setUser(me);
       setTransactions(tx.sort(byDateDesc));
@@ -159,6 +180,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
       setLoans(ln);
       setTransfers(tr.sort(byDateDesc));
       setCaptured(cap);
+      setCustomCategories(cats);
       setStatus("ready");
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) return; // redirecting to /login; keep the spinner
@@ -231,6 +253,34 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
 
   const saveBudget = useCallback(async (b: Budget) => {
     setBudget(await api<Budget>("/api/budget", { method: "PUT", body: JSON.stringify(b) }));
+  }, []);
+
+  // ── The user's own categories ──
+  const byName = (a: CustomCategory, b: CustomCategory) => a.name.localeCompare(b.name);
+  const categoryOf = useCallback((id: string) => categoryInfo(id, customCategories), [customCategories]);
+
+  const ensureCategory = useCallback(async (name: string) => {
+    const { category, custom } = await api<{ category: CategoryId; custom?: CustomCategory }>("/api/categories", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    });
+    if (custom) setCustomCategories((prev) => [...prev.filter((c) => c.id !== custom.id), custom].sort(byName));
+    return category;
+  }, []);
+
+  const renameCategory = useCallback(async (id: string, name: string) => {
+    const saved = await api<CustomCategory>(`/api/categories/${id.replace("custom:", "")}`, {
+      method: "PUT",
+      body: JSON.stringify({ name }),
+    });
+    setCustomCategories((prev) => prev.map((c) => (c.id === saved.id ? saved : c)).sort(byName));
+  }, []);
+
+  const deleteCategory = useCallback(async (id: string) => {
+    await api(`/api/categories/${id.replace("custom:", "")}`, { method: "DELETE" });
+    setTransactions((prev) => prev.map((t) => (t.category === id ? { ...t, category: "other" } : t)));
+    setBudget((prev) => ({ ...prev, categories: prev.categories.filter((c) => c.category !== id) }));
+    setCustomCategories((prev) => prev.filter((c) => c.id !== id));
   }, []);
 
   const saveSettings = useCallback(async (s: { openingBalance: number | null; cardDueAtAnchor?: number }) => {
@@ -401,6 +451,11 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
         remove,
         budget,
         saveBudget,
+        customCategories,
+        categoryOf,
+        ensureCategory,
+        renameCategory,
+        deleteCategory,
         settings,
         saveSettings,
         saveCard,

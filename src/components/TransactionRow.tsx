@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, Eye, Pencil, Trash2, X } from "lucide-react";
-import { categories, type Transaction } from "@/lib/data";
+import type { Transaction } from "@/lib/data";
 import { money, signedMoney, timeOf } from "@/lib/format";
 import { errorMessage, useAppData } from "@/lib/store";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -14,8 +14,8 @@ import { IconTile } from "./ui";
 /** Transaction row with swipe-left actions (View / Edit / Delete); see SwipeActions. */
 export function TransactionRow({ t }: { t: Transaction }) {
   const router = useRouter();
-  const { remove } = useAppData();
-  const cat = categories[t.category] ?? categories.other;
+  const { remove, categoryOf } = useAppData();
+  const cat = categoryOf(t.category);
   const income = t.amount > 0;
 
   const [viewing, setViewing] = useState(false);
@@ -107,7 +107,8 @@ export function TransactionRow({ t }: { t: Transaction }) {
 /** Read-only details pop-up for one transaction. */
 function TransactionDetails({ t, onClose, onEdit }: { t: Transaction; onClose: () => void; onEdit: () => void }) {
   const ref = useRef<HTMLDialogElement>(null);
-  const cat = categories[t.category] ?? categories.other;
+  const { categoryOf } = useAppData();
+  const cat = categoryOf(t.category);
   const income = t.amount > 0;
 
   useEffect(() => {

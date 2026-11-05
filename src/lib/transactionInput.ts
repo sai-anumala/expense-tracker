@@ -1,10 +1,10 @@
 import "server-only";
-import { CATEGORY_IDS } from "@/models/Transaction";
+import { isCategoryId } from "@/models/Transaction";
 import { MAX_AMOUNT, toPaise } from "./api";
 
 export type TransactionInput = {
   merchant: string;
-  category: (typeof CATEGORY_IDS)[number];
+  category: string;
   amount: number;
   date: Date;
   account?: string;
@@ -22,8 +22,8 @@ export function parseTransactionInput(
   if (!merchant) return { ok: false, error: "Merchant or note is required." };
   if (merchant.length > 120) return { ok: false, error: "Merchant or note must be 120 characters or fewer." };
 
-  const category = body.category as TransactionInput["category"];
-  if (!CATEGORY_IDS.includes(category)) return { ok: false, error: "Unknown category." };
+  const category = body.category as string;
+  if (!isCategoryId(category)) return { ok: false, error: "Unknown category." };
 
   const amount = Number(body.amount);
   if (!Number.isFinite(amount) || amount === 0) return { ok: false, error: "Amount must be a non-zero number." };

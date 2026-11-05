@@ -1,7 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // The Accounts page became All Transactions; keep old links working.
+  async redirects() {
+    return [{ source: "/accounts", destination: "/transactions", permanent: false }];
+  },
 };
 
 export default nextConfig;

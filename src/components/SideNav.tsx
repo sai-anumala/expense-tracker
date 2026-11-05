@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ArrowLeftRight, CreditCard, Inbox, Plus, Wallet, type LucideIcon } from "lucide-react";
+import { ArrowLeftRight, CreditCard, Inbox, Plus, ReceiptText, type LucideIcon } from "lucide-react";
 import { useAppData } from "@/lib/store";
 import { isNavActive, mainNav } from "./BottomNav";
 import { Logo } from "./ui";
@@ -11,7 +11,7 @@ import { Logo } from "./ui";
 const moreNav = [
   { href: "/card", label: "Credit Card", icon: CreditCard },
   { href: "/transfer", label: "Transfer", icon: ArrowLeftRight },
-  { href: "/accounts", label: "Accounts", icon: Wallet },
+  { href: "/transactions", label: "All Transactions", icon: ReceiptText },
 ];
 
 function NavItem({ href, label, icon: Icon, badge }: { href: string; label: string; icon: LucideIcon; badge?: number }) {

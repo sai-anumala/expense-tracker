@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { SlidersHorizontal, CircleCheck, Plus, PieChart, Trash2, Pencil } from "lucide-react";
 import { AmountForm } from "@/components/AmountForm";
@@ -12,7 +13,8 @@ import { AppHeader, IconTile, MonthPill, PageColumns, ProgressBar, RowHint } fro
 import { TabPage } from "@/components/BottomNav";
 import { ViewAllButton, useViewAll } from "@/components/ViewAll";
 import { EmptyState } from "@/components/TransactionRow";
-import { categories, pickableCategories, type CategoryId } from "@/lib/data";
+import { pickableCategories, type CategoryId } from "@/lib/data";
+import { MAX_CATEGORY_NAME, MAX_CUSTOM_CATEGORIES, normalizeCategoryName } from "@/lib/categoryRules";
 import { useAppData } from "@/lib/store";
 import { periodBounds, spentByCategory, totalSpent, within } from "@/lib/insights";
 import { daysLeftInMonth, money, moneySigned, monthLabel, plural } from "@/lib/format";
@@ -25,7 +27,7 @@ function status(ratio: number) {
 }
 
 export default function Budgets() {
-  const { transactions, transfers, budget, saveBudget, loans, settings } = useAppData();
+  const { transactions, transfers, budget, saveBudget, loans, settings, customCategories, categoryOf } = useAppData();
   const [editingLimit, setEditingLimit] = useState(false);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +47,9 @@ export default function Budgets() {
   const categoryTotal = budget.categories.reduce((s, c) => s + c.limit, 0);
   const categoriesAboveLimit = limit > 0 && categoryTotal > limit;
   const list = useViewAll(budget.categories);
-  const unbudgeted = pickableCategories.filter((c) => !budget.categories.some((b) => b.category === c));
+  const choices: CategoryId[] = [...pickableCategories.filter((c) => c !== "other"), ...customCategories.map((c) => c.id), "other"];
+  const unbudgeted = choices.filter((c) => !budget.categories.some((b) => b.category === c));
+  const canCreate = customCategories.length < MAX_CUSTOM_CATEGORIES;
 
   async function confirmRemove() {
     if (!removing) return;
@@ -191,7 +195,7 @@ export default function Budgets() {
             ) : (
               <ul className="grid grid-cols-1 gap-3 md:grid-cols-2 md:items-start lg:grid-cols-1">
                 {list.shown.map((b) => {
-                  const cat = categories[b.category];
+                  const cat = categoryOf(b.category);
                   const catSpent = byCat.get(b.category) ?? 0;
                   const ratio = catSpent / b.limit;
                   const s = status(ratio);
@@ -267,6 +271,7 @@ export default function Budgets() {
             {adding ? (
               <AddCategoryBudget
                 options={unbudgeted}
+                canCreate={canCreate}
                 onCancel={() => setAdding(false)}
                 onSave={async (category, v) => {
                   await saveBudget({ ...budget, categories: [...budget.categories, { category, limit: v }] });
@@ -275,7 +280,7 @@ export default function Budgets() {
                 }}
               />
             ) : (
-              unbudgeted.length > 0 && (
+              (unbudgeted.length > 0 || canCreate) && (
                 <button
                   onClick={() => setAdding(true)}
                   className="mt-4 flex w-full items-center justify-center gap-3 rounded-xl bg-surface-container-low py-5 text-lg font-medium text-primary"
@@ -287,12 +292,17 @@ export default function Budgets() {
                 </button>
               )
             )}
+            <p className="mt-3 text-center text-sm">
+              <Link href="/categories" className="font-medium text-primary hover:underline">
+                Manage your categories
+              </Link>
+            </p>
           </section>
         </PageColumns>
 
         <ConfirmDialog
           open={removing !== null}
-          title={`Remove the ${removing ? categories[removing].long : ""} budget?`}
+          title={`Remove the ${removing ? categoryOf(removing).long : ""} budget?`}
           message="Your transactions stay. Only the spending limit for this category is removed."
           danger
           busy={busy}
@@ -306,35 +316,59 @@ export default function Budgets() {
 
 function AddCategoryBudget({
   options,
+  canCreate,
   onSave,
   onCancel,
 }: {
   options: CategoryId[];
+  canCreate: boolean;
   onSave: (c: CategoryId, v: number) => Promise<void>;
   onCancel: () => void;
 }) {
-  const [category, setCategory] = useState<CategoryId>(options[0]);
+  const { categoryOf, ensureCategory } = useAppData();
+  const [category, setCategory] = useState<CategoryId | "new">(options[0] ?? "new");
+  const [newName, setNewName] = useState("");
+  const chip = (on: boolean) => `flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm ${on ? "bg-primary text-on-primary" : "bg-surface-container"}`;
+
+  async function save(v: number) {
+    if (category !== "new") return onSave(category, v);
+    const name = normalizeCategoryName(newName);
+    if (!name) throw new Error("Enter a name for the new category.");
+    await onSave(await ensureCategory(name), v);
+  }
+
   return (
     <div className="card mt-4 p-4">
       <p className="label-caps mb-3 text-on-surface-variant">New category budget</p>
       <div className="flex flex-wrap gap-2">
         {options.map((id) => {
-          const { label, icon: Icon } = categories[id];
+          const { label, icon: Icon } = categoryOf(id);
           return (
-            <button
-              key={id}
-              aria-pressed={id === category}
-              onClick={() => setCategory(id)}
-              className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm ${
-                id === category ? "bg-primary text-on-primary" : "bg-surface-container"
-              }`}
-            >
+            <button key={id} aria-pressed={id === category} onClick={() => setCategory(id)} className={chip(id === category)}>
               <Icon className="size-4" aria-hidden /> {label}
             </button>
           );
         })}
+        {canCreate && (
+          <button aria-pressed={category === "new"} onClick={() => setCategory("new")} className={chip(category === "new")}>
+            <Plus className="size-4" aria-hidden /> New
+          </button>
+        )}
       </div>
-      <AmountForm label="Category limit" allowZero={false} onCancel={onCancel} onSave={(v) => onSave(category, v)} />
+      {category === "new" && (
+        <label className="mt-3 block rounded-lg bg-surface-container-low px-4 py-3">
+          <span className="label-caps block text-on-surface-variant">Category name</span>
+          <input
+            autoFocus
+            value={newName}
+            maxLength={MAX_CATEGORY_NAME}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="e.g. Pet care"
+            className="w-full bg-transparent text-lg outline-none placeholder:text-outline"
+          />
+        </label>
+      )}
+      <AmountForm label="Category limit" allowZero={false} onCancel={onCancel} onSave={save} />
     </div>
   );
 }

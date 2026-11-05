@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { ChevronsDown, ChevronsUp, Inbox } from "lucide-react";
+import { Inbox } from "lucide-react";
 import { BalanceNotice } from "@/components/BalanceNotice";
+import { CategoryPicker, namedCategory } from "@/components/CategoryPicker";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { DateTimePicker } from "@/components/DateTimePicker";
 import { EmptyState } from "@/components/TransactionRow";
@@ -11,7 +12,7 @@ import { SubHeader } from "@/components/ui";
 import { ViewAllButton, useViewAll } from "@/components/ViewAll";
 import { sanitizeAmount } from "@/components/AmountForm";
 import { possibleDuplicate, suggestCategory, type CapturedItem } from "@/lib/captureMatch";
-import { categories, moreCategories, paymentMethods, primaryCategories, type CategoryId } from "@/lib/data";
+import { paymentMethods, type CategoryId } from "@/lib/data";
 import { CURRENCY_SYMBOL } from "@/lib/format";
 import { errorMessage, useAppData } from "@/lib/store";
 import { TRANSFER_ACCOUNTS, transferAccountLabels, transferHint, type TransferAccount } from "@/lib/transfers";
@@ -56,12 +57,12 @@ export default function ReviewPage() {
 }
 
 function ReviewCard({ item }: { item: CapturedItem }) {
-  const { transactions, transfers, captured, confirmCaptured, dismissCaptured } = useAppData();
+  const { transactions, transfers, captured, confirmCaptured, dismissCaptured, categoryOf, ensureCategory } = useAppData();
   const [kind, setKind] = useState<Kind>(initialKind(item));
   const [amount, setAmount] = useState(item.amount.toFixed(2));
   const [merchant, setMerchant] = useState(item.merchant ?? "");
   const [category, setCategory] = useState<CategoryId | null>(() => suggestCategory(item.merchant, transactions));
-  const [showMore, setShowMore] = useState(() => category !== null && moreCategories.includes(category));
+  const [newName, setNewName] = useState("");
   const [account, setAccount] = useState(item.account ?? "");
   const [from, setFrom] = useState<TransferAccount>("bank");
   const [to, setTo] = useState<TransferAccount>(item.kind === "atmWithdrawal" ? "cash" : "card");
@@ -90,15 +91,17 @@ function ReviewCard({ item }: { item: CapturedItem }) {
     setBusy(true);
     setError(null);
     const name = merchant.trim();
+    const typedName = kind === "expense" ? namedCategory(category, newName) : null;
     try {
+      const chosen = typedName ? await ensureCategory(typedName) : category!;
       await confirmCaptured(
         item.id,
         kind === "transfer"
           ? { type: "transfer", from, to, amount: value, date: when.toISOString(), note: name || undefined }
           : {
               type: "transaction",
-              merchant: name || (kind === "income" ? "Income" : categories[category!].long),
-              category: kind === "income" ? "income" : category!,
+              merchant: name || (kind === "income" ? "Income" : (typedName ?? categoryOf(chosen).long)),
+              category: kind === "income" ? "income" : chosen,
               amount: kind === "income" ? value : -value,
               date: when.toISOString(),
               account,
@@ -172,33 +175,7 @@ function ReviewCard({ item }: { item: CapturedItem }) {
       </label>
 
       {kind === "expense" && (
-        <div className="grid grid-cols-4 gap-2">
-          {(showMore ? [...primaryCategories, ...moreCategories] : primaryCategories).map((id) => {
-            const { label, icon: Icon } = categories[id];
-            const on = id === category;
-            return (
-              <button
-                key={id}
-                aria-pressed={on}
-                onClick={() => setCategory(id)}
-                className={`flex aspect-square flex-col items-center justify-center gap-1 rounded-xl px-1 text-center text-xs sm:aspect-auto sm:py-3 leading-tight transition ${
-                  on ? "bg-primary text-on-primary" : "bg-surface-container-low hover:bg-surface-container"
-                }`}
-              >
-                <Icon className="size-5 shrink-0" aria-hidden />
-                {label}
-              </button>
-            );
-          })}
-          <button
-            aria-expanded={showMore}
-            onClick={() => setShowMore((v) => !v)}
-            className="flex aspect-square flex-col items-center justify-center gap-1 rounded-xl border sm:aspect-auto sm:py-3 border-dashed border-outline-variant px-1 text-center text-xs leading-tight font-medium text-primary"
-          >
-            {showMore ? <ChevronsUp className="size-5" aria-hidden /> : <ChevronsDown className="size-5" aria-hidden />}
-            {showMore ? "Show less" : "Show more"}
-          </button>
-        </div>
+        <CategoryPicker compact value={category} onChange={setCategory} newName={newName} onNewName={setNewName} />
       )}
 
       {kind === "transfer" ? (

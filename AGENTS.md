@@ -42,7 +42,7 @@ Last updated: 2026-11-06 · Branch model: `develop` → `main` · Live: <https:/
 - **Credit card** (one card): statement day, due day, optional limit; bill to pay, unbilled amount, due date, utilization. Card purchases count as spending but don't reduce the available balance until the bill is paid
 - **Gmail auto-capture** (optional): a script in the user's own Google account sends bank alert emails to a **To review** list; nothing counts until the user adds it
 
-Screens: Overview (dashboard), Add/Edit Transaction, Budgets, Analytics, Loans (list, new/edit, detail), Transfer (form + history), Credit Card, Accounts (via "View All"), To review, Gmail auto-capture, Login, Sign up.
+Screens: Overview (dashboard), Add/Edit Transaction, Budgets, Analytics, Loans (list, new/edit, detail), Transfer (form + history), Credit Card, All Transactions (via "View All"), To review, Gmail auto-capture, Login, Sign up.
 Currency: **INR (₹)** with Indian digit grouping. UI derived from a Google Stitch design (see [§13](#13-design-system)).
 
 There is **no mock or sample data** anywhere: every number comes from the signed-in user's MongoDB data.
@@ -140,7 +140,7 @@ src/middleware.ts  ── verifies `ledgerly_session` JWT (edge, jose)
 App Router
   ├─ (auth)/login, (auth)/signup ─ AuthForm → POST /api/auth/* → sets cookie → full reload
   └─ (app)/layout.tsx ─ <TransactionsProvider> (src/lib/store.tsx, client)
-        on mount: GET /api/auth/me, /api/transactions, /api/budget, /api/settings, /api/loans, /api/transfers, /api/captured (parallel); /api/captured again when the tab becomes visible
+        on mount: GET /api/auth/me, /api/transactions, /api/budget, /api/settings, /api/loans, /api/transfers, /api/captured, /api/categories (parallel); /api/captured again when the tab becomes visible
         shows spinner → data | error screen with "Try again"
         exposes useAppData(): { user, logout, transactions, add, update, remove,
                                 budget, saveBudget, settings, saveSettings, saveCard,
@@ -179,7 +179,7 @@ src/
 │  ├─ (app)/add/page.tsx         Add AND edit transaction (`?id=` edit, `?kind=income` preselect). Confirm dialogs
 │  ├─ (app)/budgets/page.tsx     Monthly limit + category budgets CRUD
 │  ├─ (app)/analytics/page.tsx   Week/Month/Year analytics, donut, weekly bars, top merchants, CSV export
-│  ├─ (app)/accounts/page.tsx    Totals per payment method + full history with filter (reached via "View All")
+│  ├─ (app)/transactions/page.tsx  All Transactions: search, filters, 10 per page (reached via "View All"; /accounts redirects here)
 │  ├─ (app)/loans/page.tsx       Loans tab: You'll get / You owe, I lent / I borrowed buttons, Open/Settled lists
 │  ├─ (app)/loans/new/page.tsx   Create or edit (`?id=`) a loan; `?dir=lent|borrowed` preselect
 │  ├─ (app)/transfer/page.tsx    Transfer form (From/To chips, amount, date, note; `?id=` edit; `?from=&to=&amount=` prefill) + bill-payment low-balance warning + this-month summary + history
@@ -272,11 +272,20 @@ All schemas use `timestamps: true` and `strict: "throw"` (unknown fields throw �
 |---|---|---|
 | `userId` | ObjectId → User | required, indexed. **Every query filters on it** |
 | `merchant` | String | required, ≤ 120 (note/merchant/source; defaults to category name) |
-| `category` | enum | `food, groceries, transport, shopping, fun, bills, health, home (Sending home), fuel, friend (Sent to friend), rent, education, gifts (Gifts & donations), personal (Personal care), other, hardware (legacy), income` |
+| `category` | String | a built-in id or the user's own `custom:<id>` (checked to belong to them on every save). Built-in: `food, groceries, transport, shopping, fun, bills, health, home (Sending home), fuel, friend (Sent to friend), rent, education, gifts (Gifts & donations), personal (Personal care), other, hardware (legacy), income` |
 | `amount` | Number | **expense < 0, income > 0**, never 0, \|x\| ≤ 1e10, rounded to paise |
 | `date` | Date | indexed; not in the future (5 min tolerance) |
 | `account` | String | optional payment method, ≤ 80 (`UPI` (default), `Cash, Debit Card, Credit Card, Bank Transfer`) |
 | `receiptName` | String | optional file name only (files are **not** uploaded) |
+
+**`customcategories`** (`CustomCategory`): a user's own categories
+| Field | Type | Rules |
+|---|---|---|
+| `userId` | ObjectId → User | required. **Every query filters on it** |
+| `name` | String | 1-30 chars, at least one letter or number; not "Income". Max 20 per user |
+| `nameKey` | String | lowercased name; **unique with `userId`**, so capitals and spacing can't create duplicates |
+
+Transactions and budgets store `custom:<_id>`, so a rename needs no other change. Deleting moves its expenses to `other` and removes its budget.
 
 **`budgets`** (`Budget`): one document per user
 | Field | Type | Rules |
@@ -386,6 +395,10 @@ All bodies are JSON objects; non-object or invalid JSON → **400**. Mongoose `V
 | `POST /api/loans/:id/payments` | session | `{amount, date, account?, note?}` | 201 updated `Loan` | 400 settled / more than outstanding / before loan date; 404 |
 | `DELETE /api/loans/:id/payments/:paymentId` | session | – | 200 updated `Loan` | 404 |
 
+| `GET /api/categories` | session | – | `{id, name}[]` A to Z | – |
+| `POST /api/categories` | session | `{name}` | 201 new or 200 existing: `{category, custom?}`; a built-in name returns just its `category` | 400 invalid name / "Income" / already 20 |
+| `PUT /api/categories/:id` (id without `custom:`) | session | `{name}` | 200 `{id, name}` | 400; 409 name taken (built-in or own); 404 not found **or not owned** |
+| `DELETE /api/categories/:id` | session | – | 200 `{id, moved}` | 404 not found / not owned |
 | `GET /api/transfers` | session | – | `Transfer[]` newest first (max 1000) | – |
 | `POST /api/transfers` | session | `{from, to, amount, date(ISO), note?}` | 201 `Transfer` | 400 unknown account / same from-to / amount ≤ 0 or too large / invalid or future date / note > 120 |
 | `PUT /api/transfers/:id` | session | same as POST (omitted `note` is removed) | 200 `Transfer` | 400; 404 not found **or not owned** (same message) |
@@ -540,20 +553,21 @@ Gmail only: no SMS and no inbound email service. A Google Apps Script in the use
   - `ledgerly-loans-YYYY-MM-DD.csv` (button at the **end** of the Loans tab, `loansSummaryRows`): `Person, Type (Lent/Borrowed), Date, Total (INR), Repaid (INR), Remaining (INR), Status (Open/Overdue/Settled)`, then a blank line and `You will get` / `You owe` totals.
   - `ledgerly-<person>-statement-YYYY-MM-DD.csv` (loan detail, `personStatementRows`): passbook style `Date, Details, Amount (INR)` covering **every loan with that person** (name match, case-insensitive), oldest first: "You gave to X" / "You borrowed from X", "Interest / fees" (when total to repay > amount), "X paid you back" / "You paid back X"; final line "X owes you" / "You owe X" / "All settled" with the amount.
 
-### Accounts page
-- Net amount per `account` (payment method; "Unspecified" if empty); tap to filter the history.
+### All Transactions page (`lib/transactionFilters.ts`)
+- Filters combine (AND). **Type:** expense, income or transfer. **Date:** this month, last month, last 30 days, this year, or custom (both ends inclusive). **Category** applies to expenses, so transfers and income drop out. **Account:** a transaction's `account` ("Unspecified" if empty) or either side of a transfer. **Search:** name or note, category, account, or part of an amount.
+- The summary line adds up the filtered list: Spent and Received come from transactions only; transfers count only as Moved.
 
 ---
 
 ## 12. Screens & UX behaviour
 
 - **Add / Edit** (`/add`, `/add?id=…`, `/add?kind=income`): Expense/Income tabs (no Transfer), amount with +₹100/+₹500/+₹1,000 chips (2-decimal max), category grid (expense only), DateTimePicker, payment method select (**defaults to UPI**), note/merchant (≤ 120), receipt file **name only**.
-  - Category grid (4 columns): first shows `primaryCategories` (Food, Groceries, Transport, Shopping, Fun & Subs, Bills, Health) + a dashed **Show more** tile. Show more expands the same grid with `moreCategories` (Sending home, Fuel, Sent to friend, Rent, Education, Gifts, Personal care, **Other**) and the tile becomes **Show less**. Opens expanded when editing a transaction whose category is in `moreCategories`. No free-text categories (use the note).
+  - Category grid (4 columns): first shows `primaryCategories` (Food, Groceries, Transport, Shopping, Fun & Subs, Bills, Health) + a dashed **Show more** tile. Show more expands the same grid with `moreCategories` (Sending home, Fuel, Sent to friend, Rent, Education, Gifts, Personal care, **Other**) and the tile becomes **Show less**. Opens expanded when editing a transaction whose category is in `moreCategories`. Choosing **Other** opens an optional "Name this category" box (`CategoryPicker`): a name creates the user's own category when the form is saved (never for an abandoned form); blank saves as plain Other. A name matching a built-in or existing category reuses it, and the box says so. The user's own tiles sit under Show more, before Other.
   - New → saves immediately. **Edit → "Save changes?" confirm (Yes/Cancel). Delete → danger confirm.** On success → `/`.
   - Unknown/foreign id → "Transaction not found" screen.
   - Payment method **Credit Card** shows an info notice (expense: "counts as spending now, but your available balance changes only when you pay the card bill"; income: refund lowers what you owe) and never shows the low-balance warning.
 - **DateTimePicker:** field shows "Today, 2:45 PM" / "Yesterday, …" / "Fri, 24 Oct, …"; tapping opens a **compact centered pop-up** (max 20rem wide, 1rem margin on phones) with preview, Now/Yesterday/2 days ago, Monday-first calendar, hour/minute/AM-PM; future days and times disabled; Done/Cancel; Esc or backdrop tap closes.
-- **Transaction rows** (Overview recent list, Accounts history; built on `SwipeActions`): **swipe left** (touch or mouse drag) or **tap / Enter** to reveal three actions: **View** (read-only details pop-up with an Edit button), **Edit** (`/add?id=…`), **Delete** (confirm dialog, "Yes, delete"). Only one row is open at a time (window event `ledgerly:row-open`); vertical scrolling stays native (`touch-action: pan-y`). Rows no longer navigate on tap.
+- **Transaction rows** (Overview recent list, All Transactions; built on `SwipeActions`): **swipe left** (touch or mouse drag) or **tap / Enter** to reveal three actions: **View** (read-only details pop-up with an Edit button), **Edit** (`/add?id=…`), **Delete** (confirm dialog, "Yes, delete"). Only one row is open at a time (window event `ledgerly:row-open`); vertical scrolling stays native (`touch-action: pan-y`). Rows no longer navigate on tap.
 - **Monthly Budget card:** app font with tabular digits; the spent/cap row and the "Daily safe pace" row wrap on narrow phones, with "N days left" in its own pill so they never collide.
 - **Budgets:** Set Limit (inline AmountForm), add category budget (chips + amount). Category cards use **SwipeActions**: swipe left / tap → **Edit** (inline limit form under the card) and **Delete** (confirm dialog). Card layout is two rows (name ↔ spent / limit; left/over ↔ status badge) with truncation and wrapping so nothing overlaps on small phones.
 - **Loans tab** (`/loans`): summary cards, **I lent money** / **I borrowed** buttons → `/loans/new?dir=…`, Open/Settled tabs, **Download all loans (CSV)** at the end (from `lg`: summary and buttons left, tabs and list right, so the tabs match the list's width), cards with progress bar, Overdue badge, next payment and repay-by date. Tap → detail.
@@ -563,10 +577,12 @@ Gmail only: no SMS and no inbound email service. A Google Apps Script in the use
 - **Bell:** red badge (amber when nothing is urgent) with the number of urgent + warning reminders (`aria-label` "Notifications, N new"; "9+" over 9). Tap opens a "Reminders" panel (closes on outside click, Esc, or following a link) listing every reminder with icon, title, body and severity colour (urgent = secondary/red, warning = tertiary/amber, info = neutral); each row links to its screen. Empty: "You're all caught up ✓". Rules in §11 "Reminders".
 - **Overview banner** (`AlertBanner`, rendered by `AppHeader` only when the path is `/`): the single most important urgent/warning reminder as a slim row under the header (tap → its screen, × dismisses). Dismissal is in memory for the browser tab only (module-level set by alert id: survives tab switches, cleared on reload; no localStorage); the next reminder then shows. motion-safe fade-in.
 - **Change password dialog** (`components/ChangePasswordDialog.tsx`, from the account menu): compact centered `<dialog>` (rounded-2xl, `w-[min(22rem,calc(100%-2rem))]`) with Current password, New password (show/hide toggle for all fields, "At least 8 characters" hint), Confirm new password. Client checks (required, length, match, different) then server errors inline (`role="alert"`); busy "Saving…"; success shows "Password changed" (motion-safe pop) and closes after ~1.8 s or on Done. Esc / backdrop / Cancel close it (not while busy). No extra confirm dialog: entering the current password is the confirmation.
-- **Side nav** (`components/SideNav.tsx`, from `md`; icon rail, labelled sidebar from `xl`): logo, Add transaction, the four main tabs, then Credit Card, Transfer, Accounts, and To review with a count while there are alerts.
-- **Lists show 5 items** (`LIST_LIMIT` in `components/ViewAll.tsx`), then **View all (N)** / **Show less** in place: Category Breakdown legend (the ring still shows every slice), Top Merchants, Loans, Repayments, Category Budgets, Transfers, Credit Card cycle lists, Accounts' payment methods, To review. Overview's Recent Transactions shows 5 and links to Accounts; **Accounts' transaction list is uncapped because it is that "View All" destination**. New lists should use `useViewAll` + `ViewAllButton`.
+- **Side nav** (`components/SideNav.tsx`, from `md`; icon rail, labelled sidebar from `xl`): logo, Add transaction, the four main tabs, then Credit Card, Transfer, All Transactions, and To review with a count while there are alerts.
+- **Lists show 5 items** (`LIST_LIMIT` in `components/ViewAll.tsx`), then **View all (N)** / **Show less** in place: Category Breakdown legend (the ring still shows every slice), Top Merchants, Loans, Repayments, Category Budgets, Transfers, Credit Card cycle lists, To review. Overview's Recent Transactions shows 5 and links to All Transactions, which pages 10 at a time instead (`Pagination`). New lists should use `useViewAll` + `ViewAllButton`.
+- **All Transactions** (`/transactions`; `/accounts` redirects): search box and All / Expenses / Income / Transfers tabs always visible; Date, Sort, Category and Account behind one button on phones and tablets (badge = how many are set), always open and sticky from `lg`. Category and Account only offer what's in the user's data; Category is disabled for Income and Transfers. Summary line with count, totals and Clear filters. 10 rows per page with Previous / Page N of M / Next (arrows only under 340px); any filter change returns to page 1. Neighbouring same-day rows share a date header in any sort order (the year shows for other years). Filters and page live in the URL, so Back from an edit and a refresh restore the view.
+- **Your categories** (`/categories`, from the account menu and a link on Budgets): add, rename (confirm), delete (danger confirm saying how many expenses move to Other and whether a budget goes). Budgets' "new category budget" chips include the user's own plus a **+ New** chip with a name box.
 - **Row hints** (`RowHint`): "Swipe a … left (or tap it)" on touch screens, "Click a …" with a mouse (`pointer-fine:`).
-- **Bottom nav** (phones only, below `md`): Overview, Analytics, [+ FAB → /add], Budgets, **Loans**. Accounts is reached via "View All" on Recent Transactions. Quick actions: Add Expense, Add Income, **Credit Card** (→ `/card`), Lend / Borrow. Transfer is reached from the Credit Card screen ("Pay bill" and a "Transfer between your accounts" link).
+- **Bottom nav** (phones only, below `md`): Overview, Analytics, [+ FAB → /add], Budgets, **Loans**. All Transactions is reached via "View All" on Recent Transactions. Quick actions: Add Expense, Add Income, **Credit Card** (→ `/card`), Lend / Borrow. Transfer is reached from the Credit Card screen ("Pay bill" and a "Transfer between your accounts" link).
 - **Overview balance card:** under the figure, once, the card-due info prompt with **Update balance**. The editor has two fields (balance + unpaid credit card amount). A separate **Credit Card** card follows it (see §11; links to `/card`).
 - **Credit Card** (`/card`): not set up → intro (3 bullets), **setup form**: Statement day + Bill due day selects (1st–28th, must differ; hint "due on the due day of the same/next month"), optional Credit limit; also shows what's currently owed if anything. Set up → hero **Bill to pay** (₹billOutstanding; red when overdue) with a badge "Due 5 Nov · in 2 days" (amber ≤ 5 days, red "Overdue", green "All paid"), statement line, **Pay bill ₹X** (or **Pay early ₹due** when no bill but something is owed) → `/transfer?from=bank&to=card&amount=X`; tiles **Unbilled** (next statement date) and **Total due** (or **Card credit** when overpaid); **Credit limit** bar (`% used`, amber ≥ 80%, "₹X of ₹limit", available credit) when a limit is set; lists **This cycle (unbilled)** and **Last statement** using `TransactionRow`/`TransferRow` swipe rows (empty states); details line + **Edit card** (same form inline) and **Remove card** (danger ConfirmDialog; transactions/transfers kept). A "Transfer between your accounts" link sits at the end. Fade-up entrance is `motion-safe:`.
 - **Transfer** (`/transfer`, `/transfer?id=…` to edit, `/transfer?from=bank&to=card&amount=1234.50` to prefill a NEW transfer via `transferPrefill`; bad params fall back to Bank → Cash, empty amount): compact animated header (From-account icon → coins → To-account icon, dashed line; `motion-safe:`), **From** and **To** chip rows (Bank, UPI, Cash, Credit Card) with a swap button; the From account is disabled in the To row, and picking the current To as From swaps them. Blue hint for card bill payments (To = Credit Card) and card cash withdrawals (From = Credit Card); amber low-balance warning under the amount when a bill payment is more than the available balance (non-blocking). Big amount input (same style as Add Expense, `sanitizeAmount`), DateTimePicker, optional note (≤ 120). New → saves directly, shows a "Saved …" status and resets the form; Edit → "Save changes to this transfer?" confirm, then back to `/transfer`. Server errors inline (`role="alert"`). Unknown id → "Transfer not found". Below: "Your transfers" history (newest first) with "This month: N transfers · ₹X", rows via `TransferRow`; empty state. Not in the bottom nav (a 6th item would crowd small phones). All animations use `motion-safe:` (keyframes `ledgerly-travel/float/shimmer/fade-up/dash/pop/ring/progress/fade-in` in `globals.css`).
@@ -611,12 +627,12 @@ Tokens are defined in `src/app/globals.css` under `@theme` and used as Tailwind 
 2. **No mock or sample data, no localStorage for app data.** Everything comes from MongoDB via the API.
 3. **Every data query is scoped to the signed-in user.** New collections need an owner field and `requireUser()`.
 3a. **Loans are not transactions.** Never count loan money as income or spending; it only affects the balance via `loanCashEvents`. "Sending home" stays an expense category (planned monthly outflow).
-3b. **Transfers are not transactions.** Money moved between the user's own accounts is never income or spending; keep transfers out of tiles, budgets, analytics/CSV, Accounts totals and day-net headers. The **only** balance effect is the card model: X → card −amount, card → X +amount (`availableCashEvents`/`transferCashEffect`); Bank/UPI/Cash moves are neutral.
+3b. **Transfers are not transactions.** Money moved between the user's own accounts is never income or spending; keep transfers out of tiles, budgets, analytics/CSV, the All Transactions Spent/Received summary and day-net headers. The **only** balance effect is the card model: X → card −amount, card → X +amount (`availableCashEvents`/`transferCashEffect`); Bank/UPI/Cash moves are neutral.
 3c. **Card purchases are spending but not cash.** Expenses with account "Credit Card" (`CARD_ACCOUNT`) count in Spent/budgets/analytics but never in Total Available Balance. Always compute the balance with `availableCashEvents(transactions, transfers, loans)`, never `[...transactions, ...]` directly.
 4. **API responses** use `ok()` / `fail()` / `dbErrorResponse()` from `lib/api.ts`; validate with explicit, human-readable messages; wrap DB calls in try/catch.
 5. **Amounts:** sign encodes type (expense < 0); round with `toPaise`; display with `money()`/`signedMoney()`/`moneySigned()` (balances)/`moneyWhole()` (INR, `en-IN`). Never hardcode `₹` or `$`; use `CURRENCY_SYMBOL`.
 6. **Destructive or modifying actions on existing records require a confirm dialog** (`ConfirmDialog`).
-7. Categories (`categories`, `primaryCategories`, `moreCategories`, `pickableCategories`), payment methods and `DEFAULT_PAYMENT_METHOD` are defined once in `lib/data.ts`. Keep `CATEGORY_IDS` in `models/Transaction.ts` in sync. Adding a category = add it to `CategoryId`, `categories` (label, long name, icon, tone, chart color), one of the two lists, and `CATEGORY_IDS`.
+7. Categories (`categories`, `primaryCategories`, `moreCategories`, `pickableCategories`), payment methods and `DEFAULT_PAYMENT_METHOD` are defined once in `lib/data.ts`. Keep `CATEGORY_IDS` in `models/Transaction.ts` in sync. Screens get a category's name and icon from `categoryOf(id)` (store) or `categoryInfo(id, custom)`, never `categories[id]`, so users' own categories work and an unknown id shows as Other. Adding a built-in category = add it to `BuiltInCategoryId`, `categories` (label, long name, icon, tone, chart color), one of the two lists, and `CATEGORY_IDS`.
 8. Keep `MAX_AMOUNT` (1e10) in sync: `lib/api.ts`, `components/AmountForm.tsx`, `app/(app)/add/page.tsx`.
 9. Client pages use `useAppData()`; don't fetch directly from pages.
 10. Before pushing: `npx tsc --noEmit`, `npm run lint`, `npm test`, and a production build (see [§16](#16-testing--verification)).
@@ -731,6 +747,8 @@ For isolated tests use a **temporary local MongoDB** (`mongod --dbpath <tmp> --p
 | 2026-11-03 | Credit card wired in: `/card` screen replaces the Transfer quick action; card setup saved via separate `PUT /api/settings/card` (no re-anchor); unpaid card amount entered with the balance (default 0); one-time prompt for legacy balances; "After card dues" line on the Overview; due day must differ from statement day | User decisions (final). Separate endpoint so editing the card never moves the balance anchor; equal days would make the bill due when the next statement closes |
 | 2026-11-03 | **Transfers** between own accounts replace the "Coming soon" page: simple one-total model (no per-account balances), fixed accounts Bank/UPI/Cash/Credit Card, credit card bill = transfer, shown in Recent Transactions / Accounts history, excluded from every total | User decisions (final). Card purchases are already expenses, so paying the bill must not count twice |
 | 2026-11-05 | Overview: separate **Credit Card** card showing what's owed replaces the "After card dues" line (balance − due) | User request: show the card amount on its own instead of subtracting it |
+| 2026-11-06 | Accounts page → **All Transactions** at `/transactions`: payment-method list replaced by search, filters and 10-per-page paging, all client-side over the loaded data. Common filters always visible, the rest behind one button; filter state in the URL. No amount-range fields (search matches amounts) | User request; kept deliberately simple. Limited by the 1000-transaction load (§19) |
+| 2026-11-06 | **Users' own categories**: separate per-user collection, referenced by `custom:<id>`; created by naming Other, deleted into Other; max 20, generic Tag icon, new name reuses matches | User request ("Other" hid real spending). Ids rather than names so rename is one write; delete into Other so no money or total changes. Notes already saved keep the old name, because they are the user's text |
 | 2026-11-05 | **Gmail auto-capture** through a Google Apps Script in the user's own account, with a review step before anything counts. Gmail only: no SMS, no inbound email service (Resend declined), no Gmail OAuth | User decisions. No outside service sees the alerts and it's free; Gmail OAuth for mail needs Google's restricted-scope review. Cost: each user pastes a script once |
 | 2026-11-03 | **In-app reminders**: bell panel + Overview banner computed from loaded data (`lib/alerts.ts`); no persistence of read/unread or dismissals (badge = current urgent + warning count). Banner rendered from `AppHeader` on `/` so the Overview page needn't change | Agreed card spec; no DB/storage needed, nothing to go stale. Push/email out of scope |
 
@@ -746,11 +764,12 @@ For isolated tests use a **temporary local MongoDB** (`mongod --dbpath <tmp> --p
 - Reminders are in-app only: no push/email notifications; read state and banner dismissals are not persisted.
 - Receipts: only the file name is stored; no upload or storage.
 - Remaining `npm audit` item: PostCSS inside Next (build-time only; fixed only in Next 16).
-- Transactions list capped at 1000 per user (no pagination).
+- Transactions list capped at 1000 per user: All Transactions pages and filters only what is loaded, so the oldest are out of reach beyond that.
 - Shared DB across preview/dev/prod (see §5).
 - No account deletion or profile edit UI.
 - No per-account balances (simple model): transfers are recorded but Bank/UPI/Cash balances aren't tracked separately. Transfers list capped at 1000 per user.
 - Credit card phase 2: **multiple cards**, card EMI / interest / late fees, minimum amount due, statement history beyond the last cycle. The Pay bill link always defaults to From = Bank.
 - Loans phase 2: interest rate and EMI schedule/amortisation, missed-instalment detection (today only past `dueDate` = Overdue; the bell reminds 3 days before a plan payment), link a repayment to a transaction.
 - Gmail auto-capture: Gmail only, each user sets up a script, parser rules so far are HDFC plus common Indian wording (unrecognised alerts are dropped), and no check that a captured alert really came from the bank beyond the script's sender filter. Possible later: one-tap Gmail connection, other banks, a test button.
+- Users' own categories: one generic icon (no icon or colour choice); renaming doesn't rewrite notes that defaulted to the old name.
 - Cleanup pending: test user `test.user@ledgerly-demo.dev`; legacy `settings` doc `key:"default"`.

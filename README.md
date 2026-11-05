@@ -14,7 +14,7 @@ A mobile-first, fully responsive expense tracker built with **Next.js 15 (App Ro
 - **Loans** — track money lent to / borrowed from friends, relatives, apps and banks; partial or full repayments, optional interest, due date and monthly plan (affects balance, never income or spending)
 - **Transfers** — move money between your own Bank, UPI, Cash and Credit Card (ATM withdrawals, card bill payments); never income or spending. Only card bill payments (lower) and card cash withdrawals (raise) change the balance
 - **Credit card** — one card with statement day, due day and optional limit: bill to pay, unbilled amount, due date, utilization, Pay bill. Card purchases count as spending but don't reduce your balance until you pay the bill
-- **Accounts** — totals per payment method and full history (transactions and transfers)
+- **All Transactions** — full history (transactions and transfers) with search, filters and paging
 - **Reminders** — the 🔔 bell lists card bills due soon / overdue, high card usage, upcoming or overdue loan payments and budgets ≥ 90% used; the most important one also shows as a dismissible banner on the Overview (in-app only)
 - Amounts in **INR (₹)** with Indian digit grouping
 
@@ -59,7 +59,7 @@ Responses use `{ success, payload }` or `{ success: false, error }`. Login, sign
 
 ```
 src/
-  app/            pages (/, /add, /budgets, /analytics, /accounts, /loans, /transfer, /card) and API routes
+  app/            pages (/, /add, /budgets, /analytics, /transactions, /categories, /loans, /transfer, /card) and API routes
   components/     UI pieces (date picker, confirm dialog, amount form, nav)
   lib/            store (client data), db connection, validation, formatting, insights
   models/         Mongoose models: User, Transaction, Budget, Settings, Loan, Transfer

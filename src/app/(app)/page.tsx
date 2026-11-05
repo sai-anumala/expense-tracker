@@ -29,7 +29,7 @@ import { TabPage } from "@/components/BottomNav";
 import { EmptyState, TransactionRow } from "@/components/TransactionRow";
 import { TransferRow } from "@/components/TransferRow";
 import { useAppData } from "@/lib/store";
-import { categories, type Transaction } from "@/lib/data";
+import type { Transaction } from "@/lib/data";
 import { mergeFeed, type FeedItem } from "@/lib/transfers";
 import { loanTotals } from "@/lib/loans";
 import { availableCashEvents, cardSummary, currentCardDue, needsCardDuePrompt, type CardSummary } from "@/lib/creditCard";
@@ -44,7 +44,7 @@ const quickActions: { label: string; icon: typeof CirclePlus; href: string; acce
 ];
 
 export default function Dashboard() {
-  const { transactions, budget, settings, saveSettings, loans, transfers, captured } = useAppData();
+  const { transactions, budget, settings, saveSettings, loans, transfers, captured, categoryOf } = useAppData();
   const [tipOpen, setTipOpen] = useState(true);
   const [editingOpening, setEditingOpening] = useState(false);
 
@@ -329,7 +329,7 @@ export default function Dashboard() {
               <div className="mb-2 flex items-center justify-between px-1">
                 <h2 className="text-[22px] font-semibold tracking-tight">Recent Transactions</h2>
                 {feed.length > 0 && (
-                  <Link href="/accounts" className="flex items-center text-sm font-medium text-primary">
+                  <Link href="/transactions" className="flex items-center text-sm font-medium text-primary">
                     View All <ChevronRight className="size-4" aria-hidden />
                   </Link>
                 )}
@@ -390,7 +390,7 @@ export default function Dashboard() {
                   <span className={`font-medium ${insight.pct < 0 ? "text-primary" : "text-secondary"}`}>
                     {Math.abs(Math.round(insight.pct))}% {insight.pct < 0 ? "less" : "more"}
                   </span>{" "}
-                  on {categories[insight.category].long.toLowerCase()} than last month.
+                  on {categoryOf(insight.category).long.toLowerCase()} than last month.
                 </p>
                 <button aria-label="Dismiss tip" onClick={() => setTipOpen(false)} className="p-1">
                   <X className="size-5" />

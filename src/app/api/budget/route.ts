@@ -3,7 +3,8 @@ import { connectDb } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { MAX_AMOUNT, dbErrorResponse, fail, ok, readJsonObject, requireDb, toPaise } from "@/lib/api";
 import { BudgetModel } from "@/models/Budget";
-import { CATEGORY_IDS } from "@/models/Transaction";
+import { isCategoryId } from "@/models/Transaction";
+import { MISSING_CATEGORY, ownsCategories } from "@/lib/categoryAccess";
 
 export const dynamic = "force-dynamic";
 
@@ -48,7 +49,7 @@ export async function PUT(req: Request) {
     const item = (c && typeof c === "object" ? c : {}) as { category?: unknown; limit?: unknown };
     const category = String(item.category);
     const limit = Number(item.limit);
-    if (!CATEGORY_IDS.includes(category as (typeof CATEGORY_IDS)[number]) || category === "income")
+    if (!isCategoryId(category) || category === "income")
       return fail(400, "Unknown budget category.");
     if (!Number.isFinite(limit) || limit <= 0) return fail(400, "Category limit must be more than 0.");
     if (limit > MAX_AMOUNT) return fail(400, "Category limit is too large.");
@@ -59,6 +60,7 @@ export async function PUT(req: Request) {
 
   try {
     await connectDb();
+    if (!(await ownsCategories(user.userId, categories.map((c) => c.category)))) return fail(400, MISSING_CATEGORY);
     const doc = await BudgetModel.findOneAndUpdate(
       { key: user.userId },
       { $set: { monthlyLimit: toPaise(monthlyLimit), categories } },

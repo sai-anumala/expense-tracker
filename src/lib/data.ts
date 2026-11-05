@@ -16,12 +16,14 @@ import {
   MoreHorizontal,
   Laptop,
   Banknote,
+  Tag,
   type LucideIcon,
 } from "lucide-react";
+import { categoryNameKey, type CustomCategoryId } from "./categoryRules";
 
 // Category definitions (app configuration, not data). Keep ids in sync with
-// CATEGORY_IDS in src/models/Transaction.ts.
-export type CategoryId =
+// CATEGORY_IDS in src/models/Transaction.ts. A user's own categories are `custom:<id>` (see categoryInfo).
+export type BuiltInCategoryId =
   | "food"
   | "groceries"
   | "transport"
@@ -40,12 +42,16 @@ export type CategoryId =
   | "hardware"
   | "income";
 
+export type CategoryId = BuiltInCategoryId | CustomCategoryId;
+
+/** A category the user created; stored per user, see models/CustomCategory.ts. */
+export type CustomCategory = { id: CustomCategoryId; name: string };
+
 export type Tone = "neutral" | "primary" | "tertiary";
 
-export const categories: Record<
-  CategoryId,
-  { label: string; long: string; icon: LucideIcon; tone: Tone; color: string }
-> = {
+export type CategoryInfo = { label: string; long: string; icon: LucideIcon; tone: Tone; color: string };
+
+export const categories: Record<BuiltInCategoryId, CategoryInfo> = {
   food: { label: "Food", long: "Food & Dining", icon: Utensils, tone: "neutral", color: "var(--color-primary)" },
   groceries: { label: "Groceries", long: "Groceries", icon: ShoppingBasket, tone: "primary", color: "var(--color-primary-fixed-dim)" },
   transport: { label: "Transport", long: "Transportation", icon: Car, tone: "neutral", color: "var(--color-tertiary)" },
@@ -73,6 +79,30 @@ export const moreCategories: CategoryId[] = ["home", "fuel", "friend", "rent", "
 
 /** All expense categories selectable when adding a transaction or a budget. */
 export const pickableCategories: CategoryId[] = [...primaryCategories, ...moreCategories];
+
+/** Built-in or custom. An id we don't recognise shows as Other rather than breaking the screen. */
+export function categoryInfo(id: string, custom: CustomCategory[]): CategoryInfo {
+  if (Object.hasOwn(categories, id)) return categories[id as BuiltInCategoryId];
+  const mine = custom.find((c) => c.id === id);
+  return mine
+    ? { label: mine.name, long: mine.name, icon: Tag, tone: "neutral", color: "var(--color-outline)" }
+    : categories.other;
+}
+
+/** The built-in category a typed name refers to ("rent", "Food & Dining"), so it isn't created twice. */
+export function builtInCategoryByName(name: string): CategoryId | null {
+  const key = categoryNameKey(name);
+  return (
+    pickableCategories.find((id) => {
+      const c = categories[id as BuiltInCategoryId];
+      return categoryNameKey(c.label) === key || categoryNameKey(c.long) === key;
+    }) ?? null
+  );
+}
+
+/** What a typed name would resolve to: a built-in or one of the user's own, or null when it would be new. */
+export const existingCategoryByName = (name: string, custom: CustomCategory[]): CategoryId | null =>
+  builtInCategoryByName(name) ?? custom.find((c) => categoryNameKey(c.name) === categoryNameKey(name))?.id ?? null;
 
 /** Payment methods offered on the Add screen. */
 export const paymentMethods = ["UPI", "Cash", "Debit Card", "Credit Card", "Bank Transfer"];

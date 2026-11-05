@@ -52,5 +52,10 @@ export function dayBucket(iso: string, now = new Date()) {
   const diff = Math.round((start(now) - start(d)) / 86_400_000);
   if (diff === 0) return "Today";
   if (diff === 1) return "Yesterday";
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    // Older lists can span years, where "Nov 4" alone would be ambiguous.
+    year: d.getFullYear() === now.getFullYear() ? undefined : "numeric",
+  });
 }

@@ -1,7 +1,7 @@
 // In-app reminders shown by the 🔔 bell and the Overview banner. Pure, client-safe; computed from loaded data.
 // Rules: AGENTS.md §11 "Reminders". Nothing is persisted (no read/unread state).
 
-import { categories, type Budget, type Settings, type Transaction } from "./data";
+import { categoryInfo, type Budget, type CustomCategory, type Settings, type Transaction } from "./data";
 import type { Loan } from "./loans";
 import type { Transfer } from "./transfers";
 import { cardSummary } from "./creditCard";
@@ -61,6 +61,8 @@ export type AlertInput = {
   settings: Pick<Settings, "balanceAsOf"> & Partial<Pick<Settings, "card" | "cardDueAtAnchor">>;
   /** Bank alerts from Gmail waiting for review. */
   pendingReview?: number;
+  /** Names for budgets on the user's own categories. */
+  customCategories?: CustomCategory[];
   now?: Date;
 };
 
@@ -187,7 +189,7 @@ function budgetAlert(id: string, name: string, spent: number, limit: number, mon
   };
 }
 
-function budgetAlerts({ transactions, budget, now }: Required<AlertInput>): Alert[] {
+function budgetAlerts({ transactions, budget, now, customCategories }: Required<AlertInput>): Alert[] {
   const bounds = periodBounds("month", now);
   const month = within(transactions, bounds);
   const out: Alert[] = [];
@@ -198,7 +200,7 @@ function budgetAlerts({ transactions, budget, now }: Required<AlertInput>): Aler
   for (const c of budget.categories) {
     if (!(c.limit > 0)) continue;
     const spent = totalSpent(month.filter((t) => t.category === c.category));
-    const a = budgetAlert(`budget:cat:${c.category}`, `${categories[c.category]?.long ?? c.category} budget`, spent, c.limit, bounds[1]);
+    const a = budgetAlert(`budget:cat:${c.category}`, `${categoryInfo(c.category, customCategories).long} budget`, spent, c.limit, bounds[1]);
     if (a) out.push(a);
   }
   return out;
@@ -206,7 +208,12 @@ function budgetAlerts({ transactions, budget, now }: Required<AlertInput>): Aler
 
 /** All current reminders, most important first: urgent → warning → info, then earliest date, then card → loans → budgets. */
 export function buildAlerts(input: AlertInput): Alert[] {
-  const full: Required<AlertInput> = { ...input, pendingReview: input.pendingReview ?? 0, now: input.now ?? new Date() };
+  const full: Required<AlertInput> = {
+    ...input,
+    pendingReview: input.pendingReview ?? 0,
+    now: input.now ?? new Date(),
+    customCategories: input.customCategories ?? [],
+  };
   const list = [...cardAlerts(full), ...loanAlerts(full), ...budgetAlerts(full), ...reviewAlerts(full)];
   return list
     .map((a, i) => ({ a, i }))
