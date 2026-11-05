@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { KeyRound, LogOut } from "lucide-react";
+import { KeyRound, LogOut, Mail } from "lucide-react";
 import { useAppData } from "@/lib/store";
 import { ChangePasswordDialog } from "./ChangePasswordDialog";
 
@@ -52,6 +53,14 @@ export function UserMenu() {
             <p className="truncate font-semibold">{user.name}</p>
             <p className="truncate text-sm text-on-surface-variant">{user.email}</p>
           </div>
+          <Link
+            role="menuitem"
+            href="/capture"
+            onClick={() => setOpen(false)}
+            className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-surface-container-low"
+          >
+            <Mail className="size-4 text-on-surface-variant" aria-hidden /> Gmail auto-capture
+          </Link>
           <button
             role="menuitem"
             onClick={() => {

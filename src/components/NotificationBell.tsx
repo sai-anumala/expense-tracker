@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Bell, CheckCircle2, CreditCard, HandCoins, PieChart, type LucideIcon } from "lucide-react";
+import { Bell, CheckCircle2, CreditCard, HandCoins, Inbox, PieChart, type LucideIcon } from "lucide-react";
 import { useAppData } from "@/lib/store";
 import { buildAlerts, isAttention, type Alert, type AlertIcon, type AlertSeverity } from "@/lib/alerts";
 
-export const alertIcons: Record<AlertIcon, LucideIcon> = { card: CreditCard, loan: HandCoins, budget: PieChart };
+export const alertIcons: Record<AlertIcon, LucideIcon> = { card: CreditCard, loan: HandCoins, budget: PieChart, review: Inbox };
 
 export const severityTile: Record<AlertSeverity, string> = {
   urgent: "bg-secondary-fixed text-secondary",
@@ -16,10 +16,11 @@ export const severityTile: Record<AlertSeverity, string> = {
 
 /** Current reminders from the signed-in user's data (recomputed when the data changes). */
 export function useAlerts(): Alert[] {
-  const { transactions, transfers, loans, budget, settings } = useAppData();
+  const { transactions, transfers, loans, budget, settings, captured } = useAppData();
+  const pendingReview = captured.length;
   return useMemo(
-    () => buildAlerts({ transactions, transfers, loans, budget, settings }),
-    [transactions, transfers, loans, budget, settings],
+    () => buildAlerts({ transactions, transfers, loans, budget, settings, pendingReview }),
+    [transactions, transfers, loans, budget, settings, pendingReview],
   );
 }
 

@@ -11,6 +11,24 @@ const globalForMongoose = globalThis as unknown as {
 };
 const cached = (globalForMongoose.mongoose ??= { conn: null, promise: null });
 
+const indexed = new WeakMap<object, Promise<unknown>>();
+
+/**
+ * Build a model's indexes once per process. Call after connectDb(). Don't use Model.init() for this: Mongoose starts
+ * it when the model file loads, and with bufferCommands off that can fail before the connection opens and stay failed.
+ */
+export function ensureIndexes(model: { createIndexes: () => Promise<unknown> }) {
+  let done = indexed.get(model);
+  if (!done) {
+    done = model.createIndexes().catch((err) => {
+      indexed.delete(model); // allow a retry on the next request
+      throw err;
+    });
+    indexed.set(model, done);
+  }
+  return done;
+}
+
 export async function connectDb() {
   const uri = process.env.MONGODB_URI;
   if (!uri) throw new Error("MONGODB_URI is not set. Add it to .env.local.");

@@ -10,7 +10,7 @@ import { periodBounds, totalSpent, within } from "./insights";
 import { money } from "./format";
 
 export type AlertSeverity = "urgent" | "warning" | "info";
-export type AlertIcon = "card" | "loan" | "budget";
+export type AlertIcon = "card" | "loan" | "budget" | "review";
 
 export type Alert = {
   /** Stable id (same rule + record → same id), used as React key and for banner dismissal. */
@@ -59,8 +59,25 @@ export type AlertInput = {
   budget: Budget;
   /** `card` / `cardDueAtAnchor` may be missing at runtime on older API responses; treated as "not set up". */
   settings: Pick<Settings, "balanceAsOf"> & Partial<Pick<Settings, "card" | "cardDueAtAnchor">>;
+  /** Bank alerts from Gmail waiting for review. */
+  pendingReview?: number;
   now?: Date;
 };
+
+function reviewAlerts({ pendingReview, now }: Required<AlertInput>): Alert[] {
+  if (pendingReview <= 0) return [];
+  return [
+    {
+      id: "capture:pending",
+      severity: "info",
+      title: pendingReview === 1 ? "1 bank alert to review" : `${pendingReview} bank alerts to review`,
+      body: "From Gmail. They don't count in your totals until you add them.",
+      href: "/review",
+      icon: "review",
+      at: +now,
+    },
+  ];
+}
 
 function cardAlerts({ transactions, transfers, settings, now }: Required<AlertInput>): Alert[] {
   const card = settings.card;
@@ -189,8 +206,8 @@ function budgetAlerts({ transactions, budget, now }: Required<AlertInput>): Aler
 
 /** All current reminders, most important first: urgent → warning → info, then earliest date, then card → loans → budgets. */
 export function buildAlerts(input: AlertInput): Alert[] {
-  const full: Required<AlertInput> = { ...input, now: input.now ?? new Date() };
-  const list = [...cardAlerts(full), ...loanAlerts(full), ...budgetAlerts(full)];
+  const full: Required<AlertInput> = { ...input, pendingReview: input.pendingReview ?? 0, now: input.now ?? new Date() };
+  const list = [...cardAlerts(full), ...loanAlerts(full), ...budgetAlerts(full), ...reviewAlerts(full)];
   return list
     .map((a, i) => ({ a, i }))
     .sort((x, y) => SEVERITY_RANK[x.a.severity] - SEVERITY_RANK[y.a.severity] || x.a.at - y.a.at || x.i - y.i)

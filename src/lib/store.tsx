@@ -7,8 +7,11 @@ import { emptyBudget, emptySettings, type Budget, type Settings, type Transactio
 import type { CardSettings } from "./creditCard";
 import type { Loan } from "./loans";
 import type { Transfer, TransferInput } from "./transfers";
+import type { CapturedItem } from "./captureMatch";
 
 type NewTransaction = Omit<Transaction, "id"> & { receiptName?: string };
+export type CaptureStatus = { exists: boolean; createdAt: string | null; lastUsedAt: string | null };
+export type ConfirmCaptured = ({ type: "transaction" } & NewTransaction) | ({ type: "transfer" } & TransferInput);
 export type LoanInput = Omit<Loan, "id" | "payments">;
 export type PaymentInput = { amount: number; date: string; account?: string; note?: string };
 
@@ -42,6 +45,14 @@ type Ctx = {
   addTransfer: (t: TransferInput) => Promise<void>;
   updateTransfer: (id: string, t: TransferInput) => Promise<void>;
   removeTransfer: (id: string) => Promise<void>;
+  /** Bank alerts from Gmail waiting for review. They count nowhere until confirmed. */
+  captured: CapturedItem[];
+  confirmCaptured: (id: string, record: ConfirmCaptured) => Promise<void>;
+  dismissCaptured: (id: string) => Promise<void>;
+  getCaptureStatus: () => Promise<CaptureStatus>;
+  /** Creates or replaces the Gmail script token; the plain token is only available from this call. */
+  createCaptureToken: () => Promise<string>;
+  revokeCaptureToken: () => Promise<void>;
 };
 
 const AppDataContext = createContext<Ctx | null>(null);
@@ -118,6 +129,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
   const [settings, setSettings] = useState<Settings>(emptySettings);
   const [loans, setLoans] = useState<Loan[]>([]);
   const [transfers, setTransfers] = useState<Transfer[]>([]);
+  const [captured, setCaptured] = useState<CapturedItem[]>([]);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   // Keep the launch splash up for a short minimum so its animation can finish (only on app open;
   // the (app) layout persists across tab navigation, so this doesn't replay).
@@ -131,13 +143,14 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
   const load = useCallback(async () => {
     setStatus("loading");
     try {
-      const [me, tx, b, s, ln, tr] = await Promise.all([
+      const [me, tx, b, s, ln, tr, cap] = await Promise.all([
         api<User>("/api/auth/me"),
         api<Transaction[]>("/api/transactions"),
         api<Budget>("/api/budget"),
         api<Settings>("/api/settings"),
         api<Loan[]>("/api/loans"),
         api<Transfer[]>("/api/transfers"),
+        api<CapturedItem[]>("/api/captured"),
       ]);
       setUser(me);
       setTransactions(tx.sort(byDateDesc));
@@ -145,6 +158,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
       setSettings(s);
       setLoans(ln);
       setTransfers(tr.sort(byDateDesc));
+      setCaptured(cap);
       setStatus("ready");
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) return; // redirecting to /login; keep the spinner
@@ -162,6 +176,18 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     }
     load();
   }, [load]);
+
+  // New bank alerts arrive in the background: pick them up when the user returns to the app.
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState !== "visible") return;
+      api<CapturedItem[]>("/api/captured").then(setCaptured).catch(() => {
+        /* keep the current list; the next return to the app tries again */
+      });
+    };
+    document.addEventListener("visibilitychange", refresh);
+    return () => document.removeEventListener("visibilitychange", refresh);
+  }, []);
 
   const add = useCallback(async (t: NewTransaction) => {
     const saved = await api<Transaction>("/api/transactions", { method: "POST", body: JSON.stringify(t) });
@@ -292,6 +318,45 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     }
   }, []);
 
+  // ── Gmail auto-capture ──
+  const dropCaptured = (id: string) => setCaptured((prev) => prev.filter((x) => x.id !== id));
+
+  const confirmCaptured = useCallback(async (id: string, record: ConfirmCaptured) => {
+    try {
+      const saved = await api<{ transaction?: Transaction; transfer?: Transfer }>(`/api/captured/${id}/confirm`, {
+        method: "POST",
+        body: JSON.stringify(record),
+      });
+      if (saved.transaction) setTransactions((prev) => [saved.transaction!, ...prev].sort(byDateDesc));
+      if (saved.transfer) setTransfers((prev) => [saved.transfer!, ...prev].sort(byDateDesc));
+      dropCaptured(id);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 404) dropCaptured(id);
+      throw e;
+    }
+  }, []);
+
+  const dismissCaptured = useCallback(async (id: string) => {
+    try {
+      await api(`/api/captured/${id}`, { method: "DELETE" });
+    } catch (e) {
+      // Already gone elsewhere: that's the outcome the user wanted.
+      if (!(e instanceof ApiError && e.status === 404)) throw e;
+    }
+    dropCaptured(id);
+  }, []);
+
+  const getCaptureStatus = useCallback(() => api<CaptureStatus>("/api/capture/token"), []);
+
+  const createCaptureToken = useCallback(async () => {
+    const { token } = await api<{ token: string }>("/api/capture/token", { method: "POST" });
+    return token;
+  }, []);
+
+  const revokeCaptureToken = useCallback(async () => {
+    await api("/api/capture/token", { method: "DELETE" });
+  }, []);
+
   const logout = useCallback(async () => {
     try {
       await api("/api/auth/logout", { method: "POST" });
@@ -349,6 +414,12 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
         addTransfer,
         updateTransfer,
         removeTransfer,
+        captured,
+        confirmCaptured,
+        dismissCaptured,
+        getCaptureStatus,
+        createCaptureToken,
+        revokeCaptureToken,
       }}
     >
       <div className="motion-safe:animate-[ledgerly-fade-in_0.4s_ease-out_both]">{children}</div>

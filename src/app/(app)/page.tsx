@@ -16,6 +16,7 @@ import {
   HandCoins,
   CreditCard,
   ChevronRight,
+  Inbox,
   Lightbulb,
   ReceiptText,
   Pencil,
@@ -43,7 +44,7 @@ const quickActions: { label: string; icon: typeof CirclePlus; href: string; acce
 ];
 
 export default function Dashboard() {
-  const { transactions, budget, settings, saveSettings, loans, transfers } = useAppData();
+  const { transactions, budget, settings, saveSettings, loans, transfers, captured } = useAppData();
   const [tipOpen, setTipOpen] = useState(true);
   const [editingOpening, setEditingOpening] = useState(false);
 
@@ -210,6 +211,21 @@ export default function Dashboard() {
             </div>
           </div>
         </section>
+
+        {captured.length > 0 && (
+          <Link href="/review" className="card flex items-center gap-3 p-4 transition hover:bg-surface-container-low">
+            <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-primary-fixed/50">
+              <Inbox className="size-5 text-primary" aria-hidden />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-semibold">
+                {captured.length} {captured.length === 1 ? "transaction" : "transactions"} to review
+              </span>
+              <span className="block text-xs text-on-surface-variant">From your bank alerts in Gmail</span>
+            </span>
+            <ChevronRight className="size-4 shrink-0 text-outline" aria-hidden />
+          </Link>
+        )}
 
         {(card || cardDueNow > 0) && <CreditCardSummary card={card} dueNow={cardDueNow} />}
 
