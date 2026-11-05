@@ -3,6 +3,7 @@ import { connectDb, ensureIndexes } from "@/lib/db";
 import { dbErrorResponse, fail, ok, readJsonObject, requireDb } from "@/lib/api";
 import { alertText, parseBankAlert } from "@/lib/bankAlertParser";
 import { bearerToken, captureDedupeKey, hashCaptureToken } from "@/lib/captureToken";
+import { withDeadline } from "@/lib/deadline";
 import { HOUR, MINUTE, check, clientIp, hit, rateKey, tooMany } from "@/lib/rateLimit";
 import { CaptureTokenModel } from "@/models/CaptureToken";
 import { CapturedTransactionModel } from "@/models/CapturedTransaction";
@@ -15,6 +16,9 @@ const KEEP_MS = 30 * 24 * HOUR;
 const BAD_TOKEN_LIMIT = 30;
 const BAD_TOKEN_WINDOW = 15 * MINUTE;
 const MESSAGE_LIMIT = 120;
+/** Fail well before the platform's 300 s limit: the script keeps its place and retries this alert on its next run. */
+const DEADLINE_MS = 25_000;
+const SLOW_MS = 5_000;
 
 /**
  * POST /api/capture/email — the user's Gmail script sends a bank alert. Public in the middleware because the script
@@ -22,27 +26,47 @@ const MESSAGE_LIMIT = 120;
  * 200, so the script moves on to the next one.
  */
 export async function POST(req: Request) {
+  const started = Date.now();
+  const steps: string[] = [];
+  const mark = (step: string) => steps.push(`${step}@${Date.now() - started}ms`);
+  // Step names and timings only: never alert content, tokens or user ids.
+  const timeline = () => steps.join(" ");
+
+  const res = await withDeadline(handle(req, mark), DEADLINE_MS, () => {
+    console.error(`capture.email timed out. Reached: ${timeline()}`);
+    return fail(503, "Ledgerly took too long to respond. The alert will be retried.");
+  });
+  if (Date.now() - started >= SLOW_MS) console.warn(`capture.email slow (${res.status}): ${timeline()}`);
+  return res;
+}
+
+async function handle(req: Request, mark: (step: string) => void) {
   const noDb = requireDb();
   if (noDb) return noDb;
 
   const ipKey = rateKey("capture-ip", clientIp(req));
   const blocked = await check(ipKey, BAD_TOKEN_LIMIT);
+  mark("ipCheck");
   if (!blocked.allowed) return tooMany("failed attempts", blocked.retryAfterSec);
 
   const token = bearerToken(req);
   try {
     await connectDb();
+    mark("connect");
     const hash = token ? hashCaptureToken(token) : null;
     const owner = hash ? await CaptureTokenModel.findOne({ tokenHash: hash }).lean() : null;
+    mark("token");
     if (!hash || !owner) {
       await hit(ipKey, BAD_TOKEN_LIMIT, BAD_TOKEN_WINDOW);
       return fail(401, "Invalid or revoked capture token.");
     }
 
     const limit = await hit(rateKey("capture-token", hash), MESSAGE_LIMIT, HOUR);
+    mark("rateLimit");
     if (!limit.allowed) return tooMany("alerts", limit.retryAfterSec);
 
     const body = await readJsonObject(req);
+    mark("body");
     if (body instanceof NextResponse) return body;
     const messageId = typeof body.messageId === "string" ? body.messageId.trim() : "";
     const subject = typeof body.subject === "string" ? body.subject : "";
@@ -52,6 +76,7 @@ export async function POST(req: Request) {
     if (subject.length + text.length > MAX_TEXT) return fail(400, "Alert is too long.");
 
     await CaptureTokenModel.updateOne({ _id: owner._id }, { $set: { lastUsedAt: new Date() } });
+    mark("lastUsed");
 
     const parsed = parseBankAlert(alertText(subject, text));
     if (!parsed.captured) return ok({ captured: false, reason: parsed.reason });
@@ -61,9 +86,11 @@ export async function POST(req: Request) {
     const sender = typeof body.sender === "string" && body.sender.trim() ? body.sender.trim().slice(0, 120) : undefined;
 
     const pending = await CapturedTransactionModel.countDocuments({ userId: owner.userId });
+    mark("count");
     if (pending >= MAX_PENDING) return ok({ captured: false, reason: "queue-full" });
 
     await ensureIndexes(CapturedTransactionModel); // the unique + TTL indexes
+    mark("indexes");
     try {
       await CapturedTransactionModel.create({
         userId: owner.userId,
@@ -81,6 +108,7 @@ export async function POST(req: Request) {
       if ((err as { code?: number })?.code === 11000) return ok({ captured: false, reason: "duplicate" });
       throw err;
     }
+    mark("saved");
     return ok({ captured: true });
   } catch (err) {
     return dbErrorResponse(err, "POST /api/capture/email", "Failed to save the alert.");

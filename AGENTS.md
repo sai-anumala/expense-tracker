@@ -242,6 +242,7 @@ src/
 │  ├─ transferInput.ts (server)  parseTransferInput, toTransferDto
 │  ├─ bankAlertParser.ts         (pure) alertText, maskAlert, parseBankAlert: bank email → suggested transaction, or ignored
 │  ├─ captureMatch.ts            (pure) CapturedItem type, suggestCategory, possibleDuplicate
+│  ├─ deadline.ts                (pure) withDeadline: give up on a promise after a time limit
 │  ├─ captureToken.ts (server)   generateCaptureToken, hashCaptureToken, bearerToken, captureDedupeKey, toCapturedDto
 │  └─ gmailScript.ts             (pure) buildGmailScript: the Apps Script text with the user's URL and token
 └─ models/  defineModel.ts (dev-safe registration) · User.ts · Transaction.ts · Budget.ts · Settings.ts · Loan.ts · Transfer.ts · RateLimit.ts · CaptureToken.ts · CapturedTransaction.ts
@@ -389,7 +390,7 @@ All bodies are JSON objects; non-object or invalid JSON → **400**. Mongoose `V
 | `PUT /api/transfers/:id` | session | same as POST (omitted `note` is removed) | 200 `Transfer` | 400; 404 not found **or not owned** (same message) |
 | `DELETE /api/transfers/:id` | session | – | 200 `{id}` | 404 not found / not owned |
 
-| `POST /api/capture/email` | **Bearer token** (public in middleware) | `{messageId, subject?, text, sender?, receivedAt?}`; subject + text ≤ 5000 | 200 `{captured: true}` or `{captured: false, reason}` (`otp, failed, request, upcoming, reminder, promotion, not-a-transaction, duplicate, queue-full`) | 400 missing id/text or too long; 401 bad or revoked token; **429** + `Retry-After` |
+| `POST /api/capture/email` | **Bearer token** (public in middleware) | `{messageId, subject?, text, sender?, receivedAt?}`; subject + text ≤ 5000 | 200 `{captured: true}` or `{captured: false, reason}` (`otp, failed, request, upcoming, reminder, promotion, not-a-transaction, duplicate, queue-full`) | 400 missing id/text or too long; 401 bad or revoked token; **429** + `Retry-After`; **503** after 25 s (retried by the script) |
 | `GET /api/capture/token` | session | – | `{exists, createdAt, lastUsedAt}` (never the token) | – |
 | `POST /api/capture/token` | session | – | 201 `{token, createdAt}`; replaces any old token | – |
 | `DELETE /api/capture/token` | session | – | 200 `{revoked: true}`; waiting alerts are kept | – |
@@ -678,6 +679,7 @@ For isolated tests use a **temporary local MongoDB** (`mongod --dbpath <tmp> --p
 | Thousands of lint/tsc errors from `.claude/worktrees/...` | Sub-agent worktrees live inside the repo. They are excluded in `eslint.config.mjs` (`.claude/**`), `tsconfig.json` (`exclude`) and `.gitignore` (`.claude/worktrees/`); keep those exclusions |
 | "Too many login attempts" while testing locally | Per-email/IP counters live in the `ratelimits` collection of the **shared** DB. Wait for `Retry-After`, or (local/temporary DB only) delete the doc; keys are hashes, so `db.ratelimits.deleteMany({})` on a scratch DB. Without a proxy, local requests all share IP `unknown` unless `x-forwarded-for` is sent |
 | Gmail script can't reach Ledgerly when testing | Google can't reach localhost, and `develop` previews are behind Vercel login. Test the API with curl and a Bearer token. The script itself can only be tested against production |
+| `capture.email timed out` / `capture.email slow` in the logs | `/api/capture/email` gives up after 25 s with a 503 (it once hung to Vercel's 300 s limit; cause not yet found) and the script retries on its next run. The log lists each step reached with its timing, so the last step shows where it stuck. A retry after a late save is caught by the unique `dedupeKey` |
 | A bank alert never appears in To review | Check the sender is in `BANK_SENDERS`, then the script's Executions log in script.google.com. A 200 with `captured: false` means the parser ignored it (see `reason`); unrecognised bank wording needs a rule in `lib/bankAlertParser.ts`, tested with made-up details only |
 | `Cannot read properties of undefined (reading 'createCollection')` after adding a model | Don't call `Model.init()` for new models in routes: it can stay failed if it started before the connection opened. Use `ensureIndexes()` from `lib/db.ts` after `connectDb()` |
 | A transaction doesn't change the Total Available Balance | Its date is earlier than when the balance was entered (`balanceAsOf`); by design. Re-enter the balance via ✎ if needed. Card purchases (paid with "Credit Card") never change it; paying the bill does |
