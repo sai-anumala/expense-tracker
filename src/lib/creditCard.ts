@@ -217,37 +217,3 @@ export function cardSummary(
     billedEvents,
   };
 }
-
-export type CardDuesLine =
-  | {
-      kind: "after";
-      /** Available balance minus everything owed on the card (may be negative). */
-      after: number;
-      /** True when card dues are more than the cash available (show amber). */
-      short: boolean;
-      /** Unpaid part of the last statement (0 = omit) and its due date. */
-      bill: number;
-      dueDate: Date;
-      /** Spent since the last statement (0 = omit). */
-      unbilled: number;
-    }
-  | { kind: "credit"; credit: number };
-
-/**
- * Overview "After card dues" line. null when there is no balance or no card set up, or nothing is owed.
- * due > 0 → { kind: "after", after = available − due, … }; due < 0 (overpaid) → { kind: "credit" }.
- */
-export function cardDuesLine(available: number | null, summary: CardSummary | null): CardDuesLine | null {
-  if (available === null || !summary) return null;
-  if (summary.due < 0) return { kind: "credit", credit: summary.credit };
-  if (summary.due === 0) return null;
-  const after = round(available - summary.due);
-  return {
-    kind: "after",
-    after,
-    short: after < 0,
-    bill: summary.billOutstanding,
-    dueDate: summary.dueDate,
-    unbilled: summary.unbilled,
-  };
-}

@@ -31,9 +31,9 @@ import { useAppData } from "@/lib/store";
 import { categories, type Transaction } from "@/lib/data";
 import { mergeFeed, type FeedItem } from "@/lib/transfers";
 import { loanTotals } from "@/lib/loans";
-import { availableCashEvents, cardDuesLine, cardSummary, currentCardDue, needsCardDuePrompt } from "@/lib/creditCard";
+import { availableCashEvents, cardSummary, currentCardDue, needsCardDuePrompt, type CardSummary } from "@/lib/creditCard";
 import { anchoredBalance, categoryInsight, net, periodBounds, totalIncome, totalSpent, within } from "@/lib/insights";
-import { dayBucket, dayMonth, daysLeftInMonth, plural, money, moneySigned, monthLabel } from "@/lib/format";
+import { dayBucket, dayMonth, daysLeftInMonth, plural, money, monthLabel } from "@/lib/format";
 
 const quickActions: { label: string; icon: typeof CirclePlus; href: string; accent?: boolean }[] = [
   { label: "Add Expense", icon: CirclePlus, href: "/add", accent: true },
@@ -61,9 +61,8 @@ export default function Dashboard() {
     settings.balanceAsOf,
     monthStart,
   );
-  // "After card dues" line (only with a card set up and something owed / overpaid).
+  // Credit Card card: what's owed, shown on its own. Never subtracted from the balance above.
   const card = settings.card ? cardSummary(transactions, transfers, settings.card, settings) : null;
-  const dues = cardDuesLine(opening === null ? null : balance, card);
   // One-time prompt for balances entered before the card model (unpaid card amount never entered).
   const askCardDue = needsCardDuePrompt(transactions, transfers, settings);
   const cardDueNow = Math.max(0, currentCardDue(transactions, transfers, settings));
@@ -179,8 +178,6 @@ export default function Dashboard() {
               </div>
             )}
 
-            {dues && !editingOpening && <CardDuesLink dues={dues} />}
-
             {askCardDue && !editingOpening && (
               <BalanceNotice tone="info">
                 Card purchases no longer reduce your balance. Update your balance and enter what&apos;s unpaid on your
@@ -213,6 +210,8 @@ export default function Dashboard() {
             </div>
           </div>
         </section>
+
+        {(card || cardDueNow > 0) && <CreditCardSummary card={card} dueNow={cardDueNow} />}
 
         {/* Monthly budget */}
         <section className="card p-6">
@@ -384,50 +383,45 @@ export default function Dashboard() {
   );
 }
 
-/** "After card dues: ₹X" (+ breakdown) or "Card credit ₹X"; links to the Credit Card screen. */
-function CardDuesLink({ dues }: { dues: NonNullable<ReturnType<typeof cardDuesLine>> }) {
-  if (dues.kind === "credit") {
-    const label = `Card credit ${money(dues.credit)}: you have paid more than you owe on your credit card`;
-    return (
-      <Link
-        href="/card"
-        title={label}
-        aria-label={label}
-        className="flex items-center gap-1.5 self-start rounded-lg px-1 text-sm text-on-surface-variant hover:bg-surface-container-low"
-      >
-        <CreditCard className="size-4 shrink-0" aria-hidden />
-        Card credit <b className="font-semibold tabular-nums text-on-surface">{money(dues.credit)}</b>
-        <ChevronRight className="size-4 shrink-0 text-outline" aria-hidden />
-      </Link>
-    );
-  }
-  const parts = [
-    dues.bill > 0 ? `Card bill ${money(dues.bill)} (due ${dayMonth(dues.dueDate)})` : null,
-    dues.unbilled > 0 ? `unbilled ${money(dues.unbilled)}` : null,
-  ].filter(Boolean);
-  const breakdown = parts.join(" + ");
-  const label = `After card dues: ${moneySigned(dues.after)}${breakdown ? `. ${breakdown}` : ""}${
-    dues.short ? ". Your card dues are more than your cash" : ""
-  }`;
+/** Overview "Credit Card" card: total owed on the card (or card credit), with the bill breakdown. Links to /card. */
+function CreditCardSummary({ card, dueNow }: { card: CardSummary | null; dueNow: number }) {
+  const credit = card?.credit ?? 0;
+  const owed = card ? Math.max(0, card.due) : dueNow;
+  const overdue = card?.overdue ?? false;
+
+  let detail: string;
+  if (!card) detail = "Set up your card to see bill dates";
+  else if (credit > 0) detail = "You've paid more than you owe";
+  else if (owed === 0) detail = "Nothing to pay";
+  else
+    detail = [
+      card.billOutstanding > 0
+        ? `Bill ${money(card.billOutstanding)} ${overdue ? "overdue since" : "due"} ${dayMonth(card.dueDate)}`
+        : null,
+      card.unbilled > 0 ? `Unbilled ${money(card.unbilled)}` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+
   return (
-    <Link
-      href="/card"
-      title={label}
-      aria-label={label}
-      className={`-mx-1 block rounded-lg px-1 py-0.5 text-sm transition hover:bg-surface-container-low ${
-        dues.short ? "text-tertiary" : "text-on-surface-variant"
-      }`}
-    >
-      <span className="flex items-center gap-1.5">
-        <CreditCard className="size-4 shrink-0" aria-hidden />
-        After card dues:{" "}
-        <b className={`font-semibold tabular-nums ${dues.short ? "text-tertiary" : "text-on-surface"}`}>
-          {moneySigned(dues.after)}
-        </b>
-        <ChevronRight className="size-4 shrink-0 text-outline" aria-hidden />
+    <Link href="/card" className="card flex items-center gap-3 p-4 transition hover:bg-surface-container-low">
+      <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-surface-container">
+        <CreditCard className="size-5 text-primary" aria-hidden />
       </span>
-      {breakdown && <span className="block pl-5.5 text-xs tabular-nums">{breakdown.charAt(0).toUpperCase() + breakdown.slice(1)}</span>}
-      {dues.short && <span className="block pl-5.5 text-xs font-medium">Your card dues are more than your cash</span>}
+      <span className="min-w-0 flex-1">
+        <span className="block text-xs font-medium text-on-surface-variant">
+          {credit > 0 ? "Credit Card · Card credit" : "Credit Card · You owe"}
+        </span>
+        <span
+          className={`block text-lg font-bold tabular-nums ${
+            overdue ? "text-secondary" : credit > 0 ? "text-primary" : "text-on-surface"
+          }`}
+        >
+          {money(credit > 0 ? credit : owed)}
+        </span>
+        <span className={`block text-xs tabular-nums ${overdue ? "text-secondary" : "text-on-surface-variant"}`}>{detail}</span>
+      </span>
+      <ChevronRight className="size-4 shrink-0 text-outline" aria-hidden />
     </Link>
   );
 }
