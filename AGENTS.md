@@ -264,7 +264,7 @@ test/        Vitest setup.ts (TZ, no DB) and server-only-stub.ts · vitest.confi
 design/      Stitch screenshots (dashboard/add/budget/analytics.png) + DESIGN.md (design system spec)
 README.md    Short human-facing overview (keep consistent with this file)
 CLAUDE.md    Imports this file for Claude Code
-.claude/agents/  Subagents: ui-developer.md, qa-tester.md, bug-fixer.md (see §16)
+.claude/agents/  Coordinator: spidy.md. Subagents: ui-developer.md, qa-tester.md, bug-fixer.md (see §16)
 .claude/skills/team/SKILL.md  `/team <task>`: the main session coordinates those subagents, reviews and reports
 ```
 
@@ -681,6 +681,8 @@ Also bump "Last updated" at the top. Keep entries factual and short; link to fil
 
 **Agent team (`/team <task>`):** the main session writes acceptance criteria and creates a local `feature/<name>` branch from `develop`. `ui-developer` builds, `qa-tester` tests positive and negative scenarios and raises bugs, and `bug-fixer` fixes them, for at most 3 fix rounds. The main session then reviews the full diff, re-runs the checks and reports to the user. Only the main session merges, and only into the feature branch; `develop` and `main` need the user's go-ahead. Playwright isn't installed, so clicks, swipes and visual layout stay manual checks for the user.
 
+**Spidy (`claude --agent spidy`):** a named coordinator (`.claude/agents/spidy.md`) that runs as the main session and can start only those three subagents. It checks each subagent's work and proceeds only once it agrees, and its updates to the user are simple and chilled, with a joke and the reasoning behind the work. It follows the same workflow file as `/team`, so change the steps in `.claude/skills/team/SKILL.md`, not in `spidy.md`. Use either one; `/team` works from any session. Spidy is not the default agent for this repo.
+
 ### Unit tests (Vitest)
 - Run: `npm test` (single run, as in CI) or `npm run test:watch`. Takes about a second; no network, no database.
 - Location: `src/lib/__tests__/<module>.test.ts` (one file per module in `src/lib`). Shared builders (`tx`, `loan`, `payment`, `local`, `iso`) live in `src/lib/__tests__/fixtures.ts`.
@@ -781,6 +783,7 @@ For isolated tests use a **temporary local MongoDB** (`mongod --dbpath <tmp> --p
 | 2026-11-06 | **Users' own categories**: separate per-user collection, referenced by `custom:<id>`; created by naming Other, deleted into Other; max 20, generic Tag icon, new name reuses matches | User request ("Other" hid real spending). Ids rather than names so rename is one write; delete into Other so no money or total changes. Notes already saved keep the old name, because they are the user's text |
 | 2026-11-05 | **Gmail auto-capture** through a Google Apps Script in the user's own account, with a review step before anything counts. Gmail only: no SMS, no inbound email service (Resend declined), no Gmail OAuth | User decisions. No outside service sees the alerts and it's free; Gmail OAuth for mail needs Google's restricted-scope review. Cost: each user pastes a script once |
 | 2026-11-06 | Agent team: UI developer, QA tester and bug fixer subagents, coordinated by the main session through `/team` | User request. The main session coordinates because subagents can't reliably start other subagents. Agents are barred from the real database because all environments share it |
+| 2026-11-06 | **Spidy**: a named coordinator agent, run as the main session with `claude --agent spidy`, sharing its workflow with `/team` | User request. One workflow file keeps the two from drifting apart. Claude Code's docs now describe nested subagents as supported, which the row above doubts; starting Spidy as a subagent is untested |
 | 2026-11-03 | **In-app reminders**: bell panel + Overview banner computed from loaded data (`lib/alerts.ts`); no persistence of read/unread or dismissals (badge = current urgent + warning count). Banner rendered from `AppHeader` on `/` so the Overview page needn't change | Agreed card spec; no DB/storage needed, nothing to go stale. Push/email out of scope |
 
 ---
