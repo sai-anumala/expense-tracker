@@ -1,13 +1,14 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { connectDb } from "./db";
+import { connectDb, ensureIndexes } from "./db";
 import { fail } from "./api";
+import { withDeadline } from "./deadline";
 import { RateLimitModel } from "@/models/RateLimit";
 
 /**
  * MongoDB-backed fixed-window rate limiting (works across stateless serverless instances).
- * Every helper fails OPEN: if the rate-limit step itself errors, it logs and allows the request,
- * so a counter problem never locks users out.
+ * Every helper fails OPEN: if the rate-limit step itself errors or takes longer than STEP_LIMIT_MS, it logs and
+ * allows the request, so a counter problem never locks users out.
  */
 
 export const MINUTE = 60_000;
@@ -15,6 +16,8 @@ export const HOUR = 60 * MINUTE;
 
 export type RateResult = { allowed: boolean; retryAfterSec: number };
 const ALLOW: RateResult = { allowed: true, retryAfterSec: 0 };
+/** Short enough that the three steps of a login still finish inside the route's own time limit. */
+const STEP_LIMIT_MS = 3_000;
 
 /** Hashed counter key, e.g. rateKey("login", email). No raw personal data is stored. */
 export function rateKey(kind: string, value: string) {
@@ -31,12 +34,24 @@ const secondsLeft = (expiresAt: Date, now: number) => Math.max(1, Math.ceil((+ex
 
 async function ready() {
   await connectDb();
-  await RateLimitModel.init(); // builds the unique + TTL indexes once (memoised by Mongoose)
+  await ensureIndexes(RateLimitModel); // builds the unique + TTL indexes once per process
+}
+
+/** Run a rate-limit step, giving `fallback` if it fails or stalls. A stalled step keeps running but nobody waits. */
+function failOpen<T>(step: string, work: () => Promise<T>, fallback: T): Promise<T> {
+  const guarded = work().catch((err) => {
+    console.error(`rateLimit.${step} failed (allowing request)`, err);
+    return fallback;
+  });
+  return withDeadline(guarded, STEP_LIMIT_MS, () => {
+    console.error(`rateLimit.${step} timed out after ${STEP_LIMIT_MS} ms (allowing request)`);
+    return fallback;
+  });
 }
 
 /** Count one attempt. Starts a new window when the previous one has expired. */
-export async function hit(key: string, limit: number, windowMs: number): Promise<RateResult> {
-  try {
+export function hit(key: string, limit: number, windowMs: number): Promise<RateResult> {
+  return failOpen("hit", async () => {
     await ready();
     const now = new Date();
     const expired = { $lte: [{ $ifNull: ["$expiresAt", new Date(0)] }, now] };
@@ -61,34 +76,26 @@ export async function hit(key: string, limit: number, windowMs: number): Promise
     }
     if (!doc || doc.count <= limit) return ALLOW;
     return { allowed: false, retryAfterSec: secondsLeft(doc.expiresAt, +now) };
-  } catch (err) {
-    console.error("rateLimit.hit failed (allowing request)", err);
-    return ALLOW;
-  }
+  }, ALLOW);
 }
 
 /** Read-only check: blocked when `limit` attempts were already counted in the current window. */
-export async function check(key: string, limit: number): Promise<RateResult> {
-  try {
+export function check(key: string, limit: number): Promise<RateResult> {
+  return failOpen("check", async () => {
     await ready();
     const now = Date.now();
     const doc = await RateLimitModel.findOne({ key }).lean();
     if (!doc || +doc.expiresAt <= now || doc.count < limit) return ALLOW;
     return { allowed: false, retryAfterSec: secondsLeft(doc.expiresAt, now) };
-  } catch (err) {
-    console.error("rateLimit.check failed (allowing request)", err);
-    return ALLOW;
-  }
+  }, ALLOW);
 }
 
 /** Forget a counter (e.g. failed logins after a successful one). */
-export async function clear(key: string) {
-  try {
+export function clear(key: string): Promise<void> {
+  return failOpen("clear", async () => {
     await ready();
     await RateLimitModel.deleteOne({ key });
-  } catch (err) {
-    console.error("rateLimit.clear failed", err);
-  }
+  }, undefined);
 }
 
 /** 429 response with a Retry-After header (seconds). `what` e.g. "login attempts". */
