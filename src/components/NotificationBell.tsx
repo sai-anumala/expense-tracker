@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Bell, CheckCircle2, CreditCard, HandCoins, Inbox, PieChart, X, type LucideIcon } from "lucide-react";
 import { useAppData } from "@/lib/store";
-import { activeAlerts, buildAlerts, isAttention, type Alert, type AlertIcon, type AlertSeverity } from "@/lib/alerts";
+import { isAttention, type Alert, type AlertIcon, type AlertSeverity } from "@/lib/alerts";
 
 export const alertIcons: Record<AlertIcon, LucideIcon> = { card: CreditCard, loan: HandCoins, budget: PieChart, review: Inbox };
 
@@ -14,16 +14,9 @@ export const severityTile: Record<AlertSeverity, string> = {
   info: "bg-surface-container-high text-on-surface",
 };
 
-/** Current reminders from the signed-in user's data, minus the ones they removed (recomputed when the data changes). */
+/** Current reminders from the signed-in user's data, minus the ones they removed (computed once in the provider). */
 export function useAlerts(): Alert[] {
-  const { transactions, transfers, loans, budget, settings, captured, customCategories } = useAppData();
-  const pendingReview = captured.length;
-  const latestReviewAt = captured.reduce((latest, c) => Math.max(latest, +new Date(c.receivedAt)), 0);
-  const dismissed = settings.dismissedAlerts;
-  return useMemo(
-    () => activeAlerts(buildAlerts({ transactions, transfers, loans, budget, settings, pendingReview, latestReviewAt, customCategories }), dismissed),
-    [transactions, transfers, loans, budget, settings, pendingReview, latestReviewAt, customCategories, dismissed],
-  );
+  return useAppData().alerts;
 }
 
 /** 🔔 in the header: badge = number of urgent + warning reminders; opens a panel listing them. */

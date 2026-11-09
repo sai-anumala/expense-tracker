@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -48,6 +48,8 @@ export default function LoanDetail() {
   const [deletingPayment, setDeletingPayment] = useState<LoanPayment | null>(null);
   const [deleted, setDeleted] = useState(false);
   const repayments = useViewAll(loan?.payments ?? []);
+  // Walks every transaction, transfer and loan: recompute only when the data changes, not on every keystroke.
+  const available = useMemo(() => availableBalance(transactions, transfers, loans, settings), [transactions, transfers, loans, settings]);
 
   if (!loan) {
     if (deleted) return null; // navigating away after delete
@@ -70,7 +72,7 @@ export default function LoanDetail() {
   const settlesIt = value > 0 && Math.abs(value - s.outstanding) < 0.005;
   const accountOptions = paymentMethods.includes(account) ? paymentMethods : [account, ...paymentMethods];
   // Repaying money you borrowed reduces your balance: warn (non-blocking) if it's more than you have.
-  const short = !lent ? shortfall(availableBalance(transactions, transfers, loans, settings), value, when, settings.balanceAsOf) : null;
+  const short = !lent ? shortfall(available, value, when, settings.balanceAsOf) : null;
 
   function onRecord() {
     setError(null);

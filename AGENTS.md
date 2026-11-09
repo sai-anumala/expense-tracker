@@ -4,7 +4,7 @@
 > Read this first; it should answer most questions without exploring the code.
 > **Keep it current:** any change to behaviour, data model, API, env vars, or deployment must update the relevant section here **in the same commit** (see [§15](#15-maintaining-this-file)).
 
-Last updated: 2026-11-06 · Branch model: `develop` → `main` · Live: <https://expense-tracker-sage-six-21.vercel.app>
+Last updated: 2026-11-07 · Branch model: `develop` → `main` · Live: <https://expense-tracker-sage-six-21.vercel.app>
 
 ---
 
@@ -148,7 +148,7 @@ App Router
                                 transfers, addTransfer, updateTransfer, removeTransfer,
                                 captured, confirmCaptured, dismissCaptured,
                                 getCaptureStatus, createCaptureToken, revokeCaptureToken,
-                                customCategories, categoryOf, ensureCategory, renameCategory, dismissAlerts, … }
+                                customCategories, categoryOf, ensureCategory, renameCategory, dismissAlerts, alerts, … }
         pages compute all metrics client-side from that data (src/lib/insights.ts)
   ▼
 API route handlers (Node runtime, src/app/api/**)
@@ -159,6 +159,7 @@ API route handlers (Node runtime, src/app/api/**)
 - All pages are **client components** rendered after data loads (avoids hydration mismatches from time zones and "now").
 - State lives only in React context + MongoDB. **No localStorage** for app data (the provider deletes the legacy key `ledgerly.transactions.v1`).
 - Mutations update context state from the server's response (no optimistic updates).
+- **Re-renders:** the context value is one `useMemo` object, so consumers re-render only when a field in it changes. Reminders (`alerts`) are built once in the provider, not per component. The tab-visible refresh of `/api/captured` keeps the old array when the ids are unchanged. Pages wrap derivations that walk all data (`availableBalance`, Analytics totals/ring/merchants/weeks) in `useMemo`, so typing or hovering doesn't recompute them.
 
 ---
 
@@ -211,7 +212,7 @@ src/
 │  ├─ Pagination.tsx             Previous / Page N of M / Next (All Transactions)
 │  ├─ DateRangePicker.tsx        DateRangeField + DateRangeDialog: custom date range calendar
 │  ├─ CategoryPicker.tsx         Category grid with Show more and "Name this category" under Other; namedCategory()
-│  ├─ NotificationBell.tsx       🔔 with urgent+warning count badge → reminders panel (outside click / Esc closes); useAlerts(), alertIcons, severityTile
+│  ├─ NotificationBell.tsx       🔔 with urgent+warning count badge → reminders panel (outside click / Esc closes); useAlerts() (reads `alerts` from the provider), alertIcons, severityTile
 │  ├─ AlertBanner.tsx            Slim dismissible banner with the top urgent/warning reminder; OverviewAlertBanner shows it only on "/"
 │  ├─ BottomNav.tsx              Bottom nav on phones (Overview, Analytics, [+], Budgets, Loans); TabPage wrapper
 │  ├─ SideNav.tsx                Side rail / sidebar from md (replaces the bottom nav)
@@ -657,7 +658,7 @@ Tokens are defined in `src/app/globals.css` under `@theme` and used as Tailwind 
 6. **Destructive or modifying actions on existing records require a confirm dialog** (`ConfirmDialog`).
 7. Categories (`categories`, `primaryCategories`, `moreCategories`, `pickableCategories`), payment methods and `DEFAULT_PAYMENT_METHOD` are defined once in `lib/data.ts`. Keep `CATEGORY_IDS` in `models/Transaction.ts` in sync. Screens get a category's name and icon from `categoryOf(id)` (store) or `categoryInfo(id, custom)`, never `categories[id]`, so users' own categories work and an unknown id shows as Other. Adding a built-in category = add it to `BuiltInCategoryId`, `categories` (label, long name, icon, tone, chart color), one of the two lists, and `CATEGORY_IDS`.
 8. Keep `MAX_AMOUNT` (1e10) in sync: `lib/api.ts`, `components/AmountForm.tsx`, `app/(app)/add/page.tsx`.
-9. Client pages use `useAppData()`; don't fetch directly from pages.
+9. Client pages use `useAppData()`; don't fetch directly from pages. Every new context field goes into the provider's memoized `value` and its dependency list. Memoize page derivations that loop over all transactions/transfers/loans when the page has form or hover state.
 10. Before pushing: `npx tsc --noEmit`, `npm run lint`, `npm test`, and a production build (see [§16](#16-testing--verification)).
 11. Commits end with a `Co-Authored-By:` trailer when made by an AI agent. Work on `develop`; only merge to `main` to release.
 12. Pin new dependency versions; check `npm audit --omit=dev` after upgrades.
@@ -786,6 +787,7 @@ For isolated tests use a **temporary local MongoDB** (`mongod --dbpath <tmp> --p
 | 2026-11-05 | **Gmail auto-capture** through a Google Apps Script in the user's own account, with a review step before anything counts. Gmail only: no SMS, no inbound email service (Resend declined), no Gmail OAuth | User decisions. No outside service sees the alerts and it's free; Gmail OAuth for mail needs Google's restricted-scope review. Cost: each user pastes a script once |
 | 2026-11-06 | Agent team: UI developer, QA tester and bug fixer subagents, coordinated by the main session through `/team` | User request. The main session coordinates because subagents can't reliably start other subagents. Agents are barred from the real database because all environments share it |
 | 2026-11-06 | **Spidy**: a named coordinator agent, run as the main session with `claude --agent spidy`, sharing its workflow with `/team` | User request. One workflow file keeps the two from drifting apart. Claude Code's docs now describe nested subagents as supported, which the row above doubts; starting Spidy as a subagent is untested |
+| 2026-11-07 | Re-render fixes: memoized context value, reminders built once in the provider, no-op review refresh skipped, `useMemo` for balance and Analytics derivations. Stayed on React Context (no Redux) | A code review (not profiled) found avoidable re-renders; at ≤ 1000 items Context is enough. If paging/caching is needed later, TanStack Query fits better than Redux because the state is server data |
 | 2026-11-03 | **In-app reminders**: bell panel + Overview banner computed from loaded data (`lib/alerts.ts`); no persistence of read/unread or dismissals (badge = current urgent + warning count). Banner rendered from `AppHeader` on `/` so the Overview page needn't change | Agreed card spec; no DB/storage needed, nothing to go stale. Push/email out of scope |
 
 ---

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import {
   CalendarDays,
   CreditCard,
@@ -71,7 +71,11 @@ function AddTransaction() {
   const value = Number.parseFloat(amount) || 0;
   const tooLarge = value > MAX_AMOUNT;
   // Low-balance warning (non-blocking): only for expenses, ignoring this transaction's old amount when editing.
-  const available = availableBalance(transactions, transfers, loans, settings, { transactionId: existing?.id });
+  // Walks every transaction, transfer and loan: recompute only when the data changes, not on every keystroke.
+  const available = useMemo(
+    () => availableBalance(transactions, transfers, loans, settings, { transactionId: existing?.id }),
+    [transactions, transfers, loans, settings, existing?.id],
+  );
   // Card purchases take no cash now (the bill payment does later), so they never warn.
   const short =
     kind === "expense" ? shortfall(available, expenseCashOutflow(value, account), when, settings.balanceAsOf) : null;

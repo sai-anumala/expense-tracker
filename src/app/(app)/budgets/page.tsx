@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { SlidersHorizontal, CircleCheck, Plus, PieChart, Trash2, Pencil } from "lucide-react";
 import { AmountForm } from "@/components/AmountForm";
 import { SwipeActions } from "@/components/SwipeActions";
@@ -47,7 +47,8 @@ export default function Budgets() {
   const leftNote =
     leftLevel === "low" && spent / limit < 0.85 ? `${Math.floor((remaining / limit) * 100)}% left` : budgetStatus(limit > 0 ? spent / limit : 0);
   // Informational checks (never block saving).
-  const available = availableBalance(transactions, transfers, loans, settings);
+  // Walks every transaction, transfer and loan: recompute only when the data changes, not on every form change.
+  const available = useMemo(() => availableBalance(transactions, transfers, loans, settings), [transactions, transfers, loans, settings]);
   const uncovered = budgetAboveBalance(limit, spent, available);
   const categoryTotal = budget.categories.reduce((s, c) => s + c.limit, 0);
   const categoriesAboveLimit = limit > 0 && categoryTotal > limit;

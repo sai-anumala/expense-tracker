@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { ArrowDownLeft, ArrowUpRight, ChevronDown, CircleCheck, CreditCard, NotebookPen, UserRound } from "lucide-react";
 import { SubHeader } from "@/components/ui";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -65,7 +65,11 @@ function LoanForm() {
   const accountOptions = paymentMethods.includes(account) ? paymentMethods : [account, ...paymentMethods];
   // Lending takes money out of your balance: warn (non-blocking) if it's more than you have.
   // When editing, ignore this loan's own effect so it isn't counted twice.
-  const available = availableBalance(transactions, transfers, loans, settings, { loanId: existing?.id });
+  // Walks every transaction, transfer and loan: recompute only when the data changes, not on every keystroke.
+  const available = useMemo(
+    () => availableBalance(transactions, transfers, loans, settings, { loanId: existing?.id }),
+    [transactions, transfers, loans, settings, existing?.id],
+  );
   const short = lent ? shortfall(available, value, when, settings.balanceAsOf) : null;
 
   function validate(): string | null {

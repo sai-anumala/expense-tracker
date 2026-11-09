@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CalendarDays, TrendingDown, TrendingUp, Lightbulb, Download, ChartSpline } from "lucide-react";
 import { AppHeader, IconTile } from "@/components/ui";
 import { TabPage } from "@/components/BottomNav";
@@ -25,16 +25,17 @@ export default function Analytics() {
   const { transactions, budget, categoryOf } = useAppData();
   const [range, setRange] = useState<Range>("month");
 
-  const current = within(transactions, periodBounds(range));
-  const previous = within(transactions, periodBounds(range, new Date(), 1));
-  const total = totalSpent(current);
-  const prevTotal = totalSpent(previous);
+  // Derived from the data and the range only, so hovering or tapping the ring doesn't recompute them.
+  const current = useMemo(() => within(transactions, periodBounds(range)), [transactions, range]);
+  const previous = useMemo(() => within(transactions, periodBounds(range, new Date(), 1)), [transactions, range]);
+  const total = useMemo(() => totalSpent(current), [current]);
+  const prevTotal = useMemo(() => totalSpent(previous), [previous]);
   const change = prevTotal > 0 ? ((total - prevTotal) / prevTotal) * 100 : null;
   const [whole, cents] = money(total).replace(CURRENCY_SYMBOL, "").split(".");
-  const breakdown = spentByCategory(current);
+  const breakdown = useMemo(() => spentByCategory(current), [current]);
   // Ring: top 7 categories + "More categories" (rest folded), coloured in ring order from a
   // colour-blind-checked palette. `active` = hovered/tapped slice key, or null (nothing focused).
-  const slices = ringSlices(breakdown, categoryOf);
+  const slices = useMemo(() => ringSlices(breakdown, categoryOf), [breakdown, categoryOf]);
   const [active, setActive] = useState<string | null>(null);
   const activeSlice = slices.find((sl) => sl.key === active) ?? null;
   const shown = activeSlice ?? slices[0];
@@ -48,11 +49,12 @@ export default function Analytics() {
     document.addEventListener("pointerdown", onDown);
     return () => document.removeEventListener("pointerdown", onDown);
   }, [active]);
-  const merchants = useViewAll(topMerchants(current, Infinity));
+  const merchantList = useMemo(() => topMerchants(current, Infinity), [current]);
+  const merchants = useViewAll(merchantList);
   const legend = useViewAll(slices);
-  const weeks = weeklySpend(transactions);
+  const weeks = useMemo(() => weeklySpend(transactions), [transactions]);
   const weekTarget = budget.monthlyLimit > 0 ? (budget.monthlyLimit * 12) / 52 : 0;
-  const insight = categoryInsight(transactions);
+  const insight = useMemo(() => categoryInsight(transactions), [transactions]);
   const monthBudgetDelta = range === "month" && budget.monthlyLimit > 0 ? budget.monthlyLimit - total : null;
 
   return (

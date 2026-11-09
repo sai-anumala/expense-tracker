@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import {
   ArrowDownUp,
   ArrowLeftRight,
@@ -99,7 +99,11 @@ function TransferForm({
   // Paying the card bill takes cash out of the available balance: warn (non-blocking) if it's more than you have.
   // When editing, ignore this transfer's old effect so it isn't counted twice.
   const cashOut = Math.max(0, -transferCashEffect({ from, to, amount: value }));
-  const available = availableBalance(transactions, transfers, loans, settings, { transferId: existing?.id });
+  // Walks every transaction, transfer and loan: recompute only when the data changes, not on every keystroke.
+  const available = useMemo(
+    () => availableBalance(transactions, transfers, loans, settings, { transferId: existing?.id }),
+    [transactions, transfers, loans, settings, existing?.id],
+  );
   const short = shortfall(available, cashOut, when, settings.balanceAsOf);
 
   // Picking the current "To" account as "From" swaps them, so From and To are never the same.

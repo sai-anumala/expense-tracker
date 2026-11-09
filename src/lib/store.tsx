@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { DatabaseZap, RotateCw } from "lucide-react";
 import { Splash } from "@/components/Splash";
 import {
@@ -18,6 +18,7 @@ import type { CardSettings } from "./creditCard";
 import type { Loan } from "./loans";
 import type { Transfer, TransferInput } from "./transfers";
 import type { CapturedItem } from "./captureMatch";
+import { activeAlerts, buildAlerts, type Alert } from "./alerts";
 
 type NewTransaction = Omit<Transaction, "id"> & { receiptName?: string };
 export type CaptureStatus = { exists: boolean; createdAt: string | null; lastUsedAt: string | null };
@@ -74,6 +75,8 @@ type Ctx = {
   /** Creates or replaces the Gmail script token; the plain token is only available from this call. */
   createCaptureToken: () => Promise<string>;
   revokeCaptureToken: () => Promise<void>;
+  /** Current reminders (bell + Overview banner), minus the ones the user removed. Computed once here when the data changes. */
+  alerts: Alert[];
 };
 
 const AppDataContext = createContext<Ctx | null>(null);
@@ -140,6 +143,9 @@ export async function api<T>(url: string, init?: RequestInit): Promise<T> {
 export const errorMessage = (e: unknown, fallback = "Something went wrong. Please try again.") =>
   e instanceof Error && e.message ? e.message : fallback;
 
+/** Same review list (same ids in the same order)? Then keep the old array so nothing re-renders. */
+const sameCaptured = (a: CapturedItem[], b: CapturedItem[]) => a.length === b.length && a.every((c, i) => c.id === b[i].id);
+
 const byDateDesc = (a: { date: string }, b: { date: string }) => +new Date(b.date) - +new Date(a.date);
 
 /** All app data is read from and written to MongoDB via the API routes. */
@@ -205,7 +211,9 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
   useEffect(() => {
     const refresh = () => {
       if (document.visibilityState !== "visible") return;
-      api<CapturedItem[]>("/api/captured").then(setCaptured).catch(() => {
+      api<CapturedItem[]>("/api/captured")
+        .then((next) => setCaptured((prev) => (sameCaptured(prev, next) ? prev : next)))
+        .catch(() => {
         /* keep the current list; the next return to the app tries again */
       });
     };
@@ -427,6 +435,59 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     }
   }, []);
 
+  // Reminders depend only on the data, so work them out once here instead of in every component that shows them.
+  const pendingReview = captured.length;
+  const latestReviewAt = useMemo(() => captured.reduce((latest, c) => Math.max(latest, +new Date(c.receivedAt)), 0), [captured]);
+  const alerts = useMemo(
+    () =>
+      activeAlerts(
+        buildAlerts({ transactions, transfers, loans, budget, settings, pendingReview, latestReviewAt, customCategories }),
+        settings.dismissedAlerts,
+      ),
+    [transactions, transfers, loans, budget, settings, pendingReview, latestReviewAt, customCategories],
+  );
+
+  // One stable value object: consumers re-render only when something in it actually changes.
+  const value = useMemo<Ctx>(
+    () => ({
+      user: user!,
+      logout,
+      transactions,
+      add,
+      update,
+      remove,
+      budget,
+      saveBudget,
+      customCategories,
+      categoryOf,
+      ensureCategory,
+      renameCategory,
+      deleteCategory,
+      settings,
+      saveSettings,
+      dismissAlerts,
+      saveCard,
+      loans,
+      addLoan,
+      updateLoan,
+      removeLoan,
+      addPayment,
+      removePayment,
+      transfers,
+      addTransfer,
+      updateTransfer,
+      removeTransfer,
+      captured,
+      confirmCaptured,
+      dismissCaptured,
+      getCaptureStatus,
+      createCaptureToken,
+      revokeCaptureToken,
+      alerts,
+    }),
+    [user, logout, transactions, add, update, remove, budget, saveBudget, customCategories, categoryOf, ensureCategory, renameCategory, deleteCategory, settings, saveSettings, dismissAlerts, saveCard, loans, addLoan, updateLoan, removeLoan, addPayment, removePayment, transfers, addTransfer, updateTransfer, removeTransfer, captured, confirmCaptured, dismissCaptured, getCaptureStatus, createCaptureToken, revokeCaptureToken, alerts],
+  );
+
   if (status === "loading" || (status === "ready" && !user) || (status === "ready" && !introDone)) {
     return <Splash />;
   }
@@ -453,41 +514,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
 
   return (
     <AppDataContext.Provider
-      value={{
-        user: user!,
-        logout,
-        transactions,
-        add,
-        update,
-        remove,
-        budget,
-        saveBudget,
-        customCategories,
-        categoryOf,
-        ensureCategory,
-        renameCategory,
-        deleteCategory,
-        settings,
-        saveSettings,
-        dismissAlerts,
-        saveCard,
-        loans,
-        addLoan,
-        updateLoan,
-        removeLoan,
-        addPayment,
-        removePayment,
-        transfers,
-        addTransfer,
-        updateTransfer,
-        removeTransfer,
-        captured,
-        confirmCaptured,
-        dismissCaptured,
-        getCaptureStatus,
-        createCaptureToken,
-        revokeCaptureToken,
-      }}
+      value={value}
     >
       <div className="motion-safe:animate-[ledgerly-fade-in_0.4s_ease-out_both]">{children}</div>
     </AppDataContext.Provider>
