@@ -12,9 +12,6 @@ export function Splash() {
       aria-busy="true"
       aria-live="polite"
     >
-      {/* Soft background glow */}
-      <div className="pointer-events-none absolute top-1/3 left-1/2 size-72 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/10 blur-3xl motion-safe:animate-[ledgerly-fade-in_0.8s_ease-out_both]" />
-
       <div className="relative flex flex-col items-center">
         <div className="relative">
           {/* One soft ring pulse after the logo lands */}
