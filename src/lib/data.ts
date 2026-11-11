@@ -49,26 +49,26 @@ export type CustomCategory = { id: CustomCategoryId; name: string };
 
 export type Tone = "neutral" | "primary" | "tertiary";
 
-export type CategoryInfo = { label: string; long: string; icon: LucideIcon; tone: Tone; color: string };
+export type CategoryInfo = { label: string; long: string; icon: LucideIcon; tone: Tone };
 
 export const categories: Record<BuiltInCategoryId, CategoryInfo> = {
-  food: { label: "Food", long: "Food & Dining", icon: Utensils, tone: "neutral", color: "var(--color-primary)" },
-  groceries: { label: "Groceries", long: "Groceries", icon: ShoppingBasket, tone: "primary", color: "var(--color-primary-fixed-dim)" },
-  transport: { label: "Transport", long: "Transportation", icon: Car, tone: "neutral", color: "var(--color-tertiary)" },
-  shopping: { label: "Shopping", long: "Shopping", icon: ShoppingBag, tone: "tertiary", color: "var(--color-secondary)" },
-  fun: { label: "Fun & Subs", long: "Entertainment", icon: Clapperboard, tone: "tertiary", color: "var(--color-secondary-container)" },
-  bills: { label: "Bills", long: "Utilities & Bills", icon: Zap, tone: "neutral", color: "#ffb778" },
-  health: { label: "Health", long: "Health", icon: Heart, tone: "neutral", color: "var(--color-primary-container)" },
-  home: { label: "Sending home", long: "Sending home", icon: House, tone: "primary", color: "#3b6fb6" },
-  fuel: { label: "Fuel", long: "Fuel", icon: Fuel, tone: "tertiary", color: "#b5651d" },
-  friend: { label: "Sent to friend", long: "Sent to friend", icon: HandCoins, tone: "neutral", color: "#7a5cc7" },
-  rent: { label: "Rent", long: "Rent", icon: Building2, tone: "neutral", color: "#4d7c0f" },
-  education: { label: "Education", long: "Education", icon: GraduationCap, tone: "primary", color: "#0e7490" },
-  gifts: { label: "Gifts", long: "Gifts & donations", icon: Gift, tone: "tertiary", color: "#be185d" },
-  personal: { label: "Personal care", long: "Personal care", icon: Sparkles, tone: "neutral", color: "#a16207" },
-  other: { label: "Other", long: "Other", icon: MoreHorizontal, tone: "neutral", color: "var(--color-outline-variant)" },
-  hardware: { label: "Hardware", long: "Hardware", icon: Laptop, tone: "neutral", color: "var(--color-outline)" },
-  income: { label: "Income", long: "Income", icon: Banknote, tone: "primary", color: "var(--color-primary)" },
+  food: { label: "Food", long: "Food & Dining", icon: Utensils, tone: "neutral" },
+  groceries: { label: "Groceries", long: "Groceries", icon: ShoppingBasket, tone: "primary" },
+  transport: { label: "Transport", long: "Transportation", icon: Car, tone: "neutral" },
+  shopping: { label: "Shopping", long: "Shopping", icon: ShoppingBag, tone: "tertiary" },
+  fun: { label: "Fun & Subs", long: "Entertainment", icon: Clapperboard, tone: "tertiary" },
+  bills: { label: "Bills", long: "Utilities & Bills", icon: Zap, tone: "neutral" },
+  health: { label: "Health", long: "Health", icon: Heart, tone: "neutral" },
+  home: { label: "Sending home", long: "Sending home", icon: House, tone: "primary" },
+  fuel: { label: "Fuel", long: "Fuel", icon: Fuel, tone: "tertiary" },
+  friend: { label: "Sent to friend", long: "Sent to friend", icon: HandCoins, tone: "neutral" },
+  rent: { label: "Rent", long: "Rent", icon: Building2, tone: "neutral" },
+  education: { label: "Education", long: "Education", icon: GraduationCap, tone: "primary" },
+  gifts: { label: "Gifts", long: "Gifts & donations", icon: Gift, tone: "tertiary" },
+  personal: { label: "Personal care", long: "Personal care", icon: Sparkles, tone: "neutral" },
+  other: { label: "Other", long: "Other", icon: MoreHorizontal, tone: "neutral" },
+  hardware: { label: "Hardware", long: "Hardware", icon: Laptop, tone: "neutral" },
+  income: { label: "Income", long: "Income", icon: Banknote, tone: "primary" },
 };
 
 /** Shown first on the Add screen (the 8th tile is "Show more"). */
@@ -85,7 +85,7 @@ export function categoryInfo(id: string, custom: CustomCategory[]): CategoryInfo
   if (Object.hasOwn(categories, id)) return categories[id as BuiltInCategoryId];
   const mine = custom.find((c) => c.id === id);
   return mine
-    ? { label: mine.name, long: mine.name, icon: Tag, tone: "neutral", color: "var(--color-outline)" }
+    ? { label: mine.name, long: mine.name, icon: Tag, tone: "neutral" }
     : categories.other;
 }
 

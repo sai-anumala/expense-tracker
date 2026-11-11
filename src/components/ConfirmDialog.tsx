@@ -55,7 +55,7 @@ export function ConfirmDialog({
           onClick={onConfirm}
           disabled={busy}
           className={`rounded-full px-5 py-2.5 font-medium disabled:opacity-50 ${
-            danger ? "bg-secondary text-white" : "bg-primary text-on-primary"
+            danger ? "bg-secondary text-on-secondary" : "bg-primary text-on-primary"
           }`}
         >
           {busy ? "Please wait…" : confirmLabel}

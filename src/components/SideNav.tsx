@@ -27,7 +27,7 @@ function NavItem({ href, label, icon: Icon, badge }: { href: string; label: stri
       <Icon className="size-5 shrink-0" aria-hidden />
       <span className="xl:flex-1">{label}</span>
       {badge !== undefined && (
-        <span className="absolute top-1 right-2 grid h-4 min-w-4 place-items-center rounded-full bg-secondary px-1 text-[10px] font-bold tabular-nums text-white xl:static">
+        <span className="absolute top-1 right-2 grid h-4 min-w-4 place-items-center rounded-full bg-secondary px-1 text-[10px] font-bold tabular-nums text-on-secondary xl:static">
           {badge > 9 ? "9+" : badge}
         </span>
       )}

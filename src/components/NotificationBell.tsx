@@ -54,8 +54,8 @@ export function NotificationBell() {
         {count > 0 && (
           <span
             aria-hidden
-            className={`absolute top-0.5 right-0.5 grid h-4 min-w-4 place-items-center rounded-full px-1 text-[10px] leading-none font-bold tabular-nums text-white ring-2 ring-surface-container-lowest ${
-              urgent ? "bg-secondary" : "bg-tertiary"
+            className={`absolute top-0.5 right-0.5 grid h-4 min-w-4 place-items-center rounded-full px-1 text-[10px] leading-none font-bold tabular-nums ring-2 ring-surface-container-lowest ${
+              urgent ? "bg-secondary text-on-secondary" : "bg-tertiary text-on-tertiary"
             }`}
           >
             {count > 9 ? "9+" : count}

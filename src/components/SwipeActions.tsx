@@ -16,7 +16,7 @@ export type SwipeAction = {
 const toneClass: Record<SwipeAction["tone"], string> = {
   neutral: "bg-surface-container-high text-on-surface",
   primary: "bg-primary text-on-primary",
-  danger: "bg-secondary text-white",
+  danger: "bg-secondary text-on-secondary",
 };
 
 /**

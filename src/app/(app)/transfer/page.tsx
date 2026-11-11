@@ -185,7 +185,7 @@ function TransferForm({
               </div>
               <AccountChips label="To" value={to} disabled={from} onPick={setTo} />
               {(isCardBill({ from, to }) || isCardAdvance({ from, to })) && (
-                <p className="flex items-start gap-2 rounded-lg bg-[#e3eefc] px-3 py-2.5 text-sm text-[#1d5aa3]">
+                <p className="flex items-start gap-2 rounded-lg bg-info-container px-3 py-2.5 text-sm text-on-info-container">
                   <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
                   {transferHint({ from, to })}
                 </p>
@@ -392,7 +392,7 @@ function Illustration({ from, to }: { from: TransferAccount; to: TransferAccount
         {[0, 1.2].map((delay) => (
           <span
             key={delay}
-            className="absolute top-1/2 left-[8%] grid size-6 place-items-center rounded-full bg-[#eda100] text-white opacity-0 shadow-md motion-safe:animate-[ledgerly-travel_2.4s_ease-in-out_infinite] motion-reduce:hidden"
+            className="absolute top-1/2 left-[8%] grid size-6 place-items-center rounded-full bg-coin text-on-coin opacity-0 shadow-md motion-safe:animate-[ledgerly-travel_2.4s_ease-in-out_infinite] motion-reduce:hidden"
             style={{ animationDelay: `${delay}s` }}
           >
             <IndianRupee className="size-3.5" strokeWidth={2.5} />

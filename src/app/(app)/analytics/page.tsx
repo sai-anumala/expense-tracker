@@ -266,12 +266,11 @@ function downloadTransactionsCsv(list: Transaction[], categoryOf: (id: string) =
 }
 
 /**
- * Categorical palette for the ring, applied in ring order (largest slice first). Validated with the dataviz
- * validator on white: adjacent CVD ΔE ≥ 9.1, normal-vision ΔE ≥ 19.6. Light slots < 3:1 contrast are fine
- * because every slice has a visible text label in the legend.
+ * Ring palette, applied in ring order (largest slice first). Values live in globals.css (`--color-chart-*`).
+ * Light slots < 3:1 contrast are fine because every slice has a visible text label in the legend.
  */
-const RING_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6"];
-const MORE_COLOR = "#b4bac3"; // neutral grey for the folded "More categories" slice
+const RING_COLORS = [1, 2, 3, 4, 5, 6, 7].map((n) => `var(--color-chart-${n})`);
+const MORE_COLOR = "var(--color-chart-more)"; // neutral grey for the folded "More categories" slice
 
 type Slice = { key: string; label: string; amount: number; color: string; members?: CategoryId[] };
 

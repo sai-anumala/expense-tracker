@@ -14,7 +14,7 @@ import { formatWhen } from "./DateTimePicker";
 export function TransferIcon({ size = "md" }: { size?: "sm" | "md" }) {
   return (
     <span
-      className={`${size === "md" ? "size-12" : "size-10"} grid shrink-0 place-items-center rounded-lg bg-[#e3eefc] text-[#2a78d6]`}
+      className={`${size === "md" ? "size-12" : "size-10"} grid shrink-0 place-items-center rounded-lg bg-info-container text-info`}
     >
       <ArrowLeftRight className="size-5" strokeWidth={2} aria-hidden />
     </span>

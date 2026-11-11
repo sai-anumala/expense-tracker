@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Hanken_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import { themeColors } from "@/lib/themeColors";
 
 const hanken = Hanken_Grotesk({ variable: "--font-hanken", subsets: ["latin"] });
 const jetbrains = JetBrains_Mono({ variable: "--font-jetbrains", subsets: ["latin"] });
@@ -14,7 +15,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#f7f9ff",
+  themeColor: themeColors.surface,
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

@@ -28,7 +28,19 @@
   --color-tertiary-container: #ae6100;
   --color-tertiary-fixed: #ffdcc1;
 
+  --color-on-secondary: #ffffff;
+  --color-on-tertiary: #ffffff;
+
   --color-error: #ba1a1a;
+
+  /* Info / transfers: neutral blue, neither income (green) nor spending (red). */
+  --color-info: #2a78d6;
+  --color-info-container: #e3eefc;
+  --color-on-info-container: #1d5aa3;
+
+  /* Coin animation on the Transfer screen. */
+  --color-coin: #eda100;
+  --color-on-coin: #ffffff;
 
   --font-sans: var(--font-hanken), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-jetbrains), ui-monospace, monospace;
@@ -38,6 +50,22 @@
   --radius-md: 0.75rem;
   --radius-lg: 1rem;
   --radius-xl: 1.5rem;
+}
+
+/*
+ * Analytics donut palette, applied in ring order (largest slice first). Validated with the dataviz
+ * validator on white: adjacent CVD ΔE ≥ 9.1, normal-vision ΔE ≥ 19.6. Re-validate if you change them.
+ * `static` keeps the variables in the CSS even though they're only read through var() in TSX.
+ */
+@theme static {
+  --color-chart-1: #2a78d6;
+  --color-chart-2: #eb6834;
+  --color-chart-3: #1baf7a;
+  --color-chart-4: #eda100;
+  --color-chart-5: #e87ba4;
+  --color-chart-6: #008300;
+  --color-chart-7: #6250d6;
+  --color-chart-more: #b4bac3;
 }
 
 @utility label-caps {
