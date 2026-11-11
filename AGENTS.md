@@ -266,6 +266,7 @@ src/
 src/lib/__tests__/  Vitest unit tests (<module>.test.ts) + fixtures.ts builders (see §16)
 test/        Vitest setup.ts (TZ, no DB) and server-only-stub.ts · vitest.config.mts at the repo root
 design/      Stitch screenshots (dashboard/add/budget/analytics.png) + DESIGN.md (design system spec)
+docs/USER_GUIDE.md  User guide: every feature, formula and screen in plain words, with screenshots in docs/screenshots/ (keep in sync, see §15)
 README.md    Short human-facing overview (keep consistent with this file)
 CLAUDE.md    Imports this file for Claude Code
 .claude/agents/  Coordinator: spidy.md. Subagents: ui-developer.md, qa-tester.md, bug-fixer.md (see §16)
@@ -683,6 +684,8 @@ Update this file **in the same commit** whenever you change:
 - any formula or metric → §11 (and get product sign-off for §11 dashboard rows)
 - screens/UX rules → §12 · design tokens → §13 · env vars → §4 · deploy/branching/infra → §5
 - a non-obvious decision → add a row to §18 · a discovered pitfall → §17 · new TODO → §19
+
+**User guide too:** any major or user-visible change (new or changed feature, screen, formula, rule, limit) must also update `docs/USER_GUIDE.md` in the same commit, including its "Last updated" date. If a screen looks different, retake its screenshot in `docs/screenshots/` (steps at the end of the guide; sample data in a temporary DB only, never the shared one). Pure refactors, tests and internal fixes don't need a guide change.
 
 Also bump "Last updated" at the top. Keep entries factual and short; link to files rather than pasting code.
 

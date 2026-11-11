@@ -1,6 +1,8 @@
 # Ledgerly — Expense Tracker
 
 > 📘 **Full project guide for developers and AI agents: [AGENTS.md](AGENTS.md)** (architecture, data model, API, formulas, deployment, gotchas).
+>
+> 📗 **How every feature works, for users: [docs/USER_GUIDE.md](docs/USER_GUIDE.md)** (with screenshots).
 
 A mobile-first, fully responsive expense tracker built with **Next.js 15 (App Router)**, **Tailwind CSS v4**, and **MongoDB (Mongoose)**. UI based on the Google Stitch design "Clean Expense Tracker" (references in [`design/`](design)).
 
