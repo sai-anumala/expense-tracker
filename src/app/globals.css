@@ -1,6 +1,12 @@
 @import "tailwindcss";
 
-/* Design tokens from Stitch project "Clean Expense Tracker" (Kinetic Ledger) */
+/* `dark:` variant follows the app's theme switch (<html data-theme="dark">), not the OS setting. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/*
+ * Design tokens from Stitch project "Clean Expense Tracker" (Kinetic Ledger). These are the LIGHT values;
+ * dark values for the same names are in `:root[data-theme="dark"]` below. Change a colour in both places.
+ */
 @theme {
   --color-surface: #f7f9ff;
   --color-surface-dim: #d5dae4;
@@ -38,6 +44,9 @@
   --color-info-container: #e3eefc;
   --color-on-info-container: #1d5aa3;
 
+  /* Dialog backdrops (stays dark in both themes). */
+  --color-scrim: #161c23;
+
   /* Coin animation on the Transfer screen. */
   --color-coin: #eda100;
   --color-on-coin: #ffffff;
@@ -66,6 +75,60 @@
   --color-chart-6: #008300;
   --color-chart-7: #6250d6;
   --color-chart-more: #b4bac3;
+}
+
+/*
+ * Dark theme: same token names, dark values, so every class (`bg-surface`, `text-primary`, …) switches.
+ * Pairs keep the light theme's roles: `on-X` stays readable on `X`, `X` text stays readable on cards,
+ * `X-fixed` is a tint behind `X` text, `primary-container` is a hover/pill shade under `on-primary` text.
+ * Checked with WCAG contrast: all text pairs ≥ 4.5:1 on cards.
+ */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --color-surface: #0f1419;
+  --color-surface-dim: #353c45;
+  --color-surface-container-lowest: #171d24;
+  --color-surface-container-low: #1c232b;
+  --color-surface-container: #222a33;
+  --color-surface-container-high: #2b333d;
+  --color-surface-container-highest: #343d48;
+  --color-on-surface: #e3e8ef;
+  --color-on-surface-variant: #b9c6bd;
+  --color-outline: #87948c;
+  --color-outline-variant: #56635c;
+
+  --color-primary: #5fd8a4;
+  --color-on-primary: #00311f;
+  --color-primary-container: #46bf8c;
+  --color-primary-fixed: #0d4a33;
+  --color-primary-fixed-dim: #2a8a63;
+
+  --color-secondary: #ff8f7b;
+  --color-on-secondary: #3b0800;
+  --color-secondary-container: #c2412c;
+  --color-secondary-fixed: #5c1a10;
+
+  --color-tertiary: #ffb86b;
+  --color-on-tertiary: #3d2200;
+  --color-tertiary-container: #d98a2b;
+  --color-tertiary-fixed: #4a2c05;
+
+  --color-error: #ffb4ab;
+
+  --color-info: #7cb4f2;
+  --color-info-container: #14304f;
+  --color-on-info-container: #b8d5f7;
+
+  --color-scrim: #000000;
+
+  /* Only the colours too dark to see on a dark card change; hues and order stay validated. */
+  --color-chart-6: #2ea043;
+  --color-chart-more: #8a929c;
+}
+
+:root {
+  color-scheme: light;
 }
 
 @utility label-caps {

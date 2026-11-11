@@ -80,7 +80,7 @@ export function ChangePasswordDialog({ open, onClose }: { open: boolean; onClose
         close();
       }}
       onClick={(e) => e.target === ref.current && close()}
-      className="m-auto w-[min(22rem,calc(100%-2rem))] rounded-2xl bg-surface-container-lowest p-0 text-on-surface shadow-2xl backdrop:bg-on-surface/40"
+      className="m-auto w-[min(22rem,calc(100%-2rem))] rounded-2xl bg-surface-container-lowest p-0 text-on-surface shadow-2xl backdrop:bg-scrim/40"
     >
       <div className="p-5">
         <div className="flex items-start justify-between gap-3">

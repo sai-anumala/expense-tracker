@@ -115,7 +115,7 @@ function PickerSheet({
         onClose();
       }}
       onClick={(e) => e.target === ref.current && onClose()} // tap backdrop to close
-      className="m-auto w-[min(20rem,calc(100%-2rem))] rounded-2xl bg-surface-container-lowest p-0 text-on-surface shadow-2xl backdrop:bg-on-surface/40"
+      className="m-auto w-[min(20rem,calc(100%-2rem))] rounded-2xl bg-surface-container-lowest p-0 text-on-surface shadow-2xl backdrop:bg-scrim/40"
     >
       <div className="p-4">
         <div className="flex items-center justify-between">

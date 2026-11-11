@@ -38,7 +38,7 @@ export function ConfirmDialog({
         e.preventDefault(); // Esc → our handler, so state stays in sync
         if (!busy) onCancel();
       }}
-      className="m-auto w-[min(22rem,calc(100%-2rem))] rounded-xl bg-surface-container-lowest p-6 text-on-surface shadow-xl backdrop:bg-on-surface/40"
+      className="m-auto w-[min(22rem,calc(100%-2rem))] rounded-xl bg-surface-container-lowest p-6 text-on-surface shadow-xl backdrop:bg-scrim/40"
     >
       <h2 className="text-lg font-semibold">{title}</h2>
       {message && <div className="mt-2 text-sm text-on-surface-variant">{message}</div>}

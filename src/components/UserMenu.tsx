@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { KeyRound, LogOut, Mail, Tag } from "lucide-react";
 import { useAppData } from "@/lib/store";
 import { ChangePasswordDialog } from "./ChangePasswordDialog";
+import { ThemeSwitcher } from "./ThemeSwitcher";
 
 export function initials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -52,6 +53,9 @@ export function UserMenu() {
           <div className="border-b border-surface-container px-4 py-3">
             <p className="truncate font-semibold">{user.name}</p>
             <p className="truncate text-sm text-on-surface-variant">{user.email}</p>
+          </div>
+          <div className="border-b border-surface-container">
+            <ThemeSwitcher />
           </div>
           <Link
             role="menuitem"
