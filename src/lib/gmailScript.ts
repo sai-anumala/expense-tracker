@@ -8,9 +8,9 @@ export function buildGmailScript(origin: string, token: string): string {
 const LEDGERLY_URL = ${JSON.stringify(url)};
 const LEDGERLY_TOKEN = ${JSON.stringify(token)};
 
-// Add the address your bank's alerts come from, for example "alerts@yourbank.com".
+// The addresses your bank's alerts come from. HDFC is filled in; add or replace with your bank's.
 const BANK_SENDERS = [
-  "",
+  "alerts@hdfcbank.bank.in",
 ];
 
 const LAST_SENT = "ledgerlyLastSent";
@@ -26,14 +26,25 @@ function senders_() {
 /** Run this once. Only alerts arriving from now on are sent, then it checks every 5 minutes. */
 function setup() {
   senders_();
-  ScriptApp.getProjectTriggers().forEach((t) => ScriptApp.deleteTrigger(t));
+
+  // Remove only this script's own trigger, so running setup again never touches other triggers.
+  ScriptApp.getProjectTriggers()
+    .filter((t) => t.getHandlerFunction() === "sendBankAlerts")
+    .forEach((t) => ScriptApp.deleteTrigger(t));
+
   PropertiesService.getUserProperties().setProperty(LAST_SENT, String(Date.now()));
+
   ScriptApp.newTrigger("sendBankAlerts").timeBased().everyMinutes(5).create();
 }
 
 function sendBankAlerts() {
   const props = PropertiesService.getUserProperties();
-  let lastSent = Number(props.getProperty(LAST_SENT) || Date.now());
+  // No starting point yet (the trigger was added by hand, without running setup): start from now.
+  if (!props.getProperty(LAST_SENT)) {
+    props.setProperty(LAST_SENT, String(Date.now()));
+    return;
+  }
+  let lastSent = Number(props.getProperty(LAST_SENT));
   const query = "from:(" + senders_().join(" OR ") + ") newer_than:7d";
 
   const messages = [];

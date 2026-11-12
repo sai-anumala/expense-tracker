@@ -159,9 +159,20 @@ export default function CapturePage() {
               </a>{" "}
               with the Google account that gets your bank alerts, choose New project, and replace everything with the script.
             </li>
-            <li>In BANK_SENDERS, type the address your bank&apos;s alerts come from. Find it on any alert in Gmail.</li>
+            <li>Check BANK_SENDERS: HDFC&apos;s alert address is filled in. For another bank, add or replace it with the address its alerts come from (find it on any alert in Gmail).</li>
             <li>Save, choose the setup function at the top, and press Run.</li>
             <li>Approve access. Google may warn that the app isn&apos;t verified, because it&apos;s your own script: choose Advanced, then continue.</li>
+            <li>
+              Check the trigger: in the left sidebar, click <span className="font-medium text-on-surface">Triggers</span> (the clock icon). You should see{" "}
+              <span className="font-mono text-xs">sendBankAlerts</span>, Time-based, every 5 minutes. If it isn&apos;t there, add it:
+              <ol className="mt-2 list-[lower-alpha] space-y-1 pl-5">
+                <li>Click <span className="font-medium text-on-surface">+ Add Trigger</span> (bottom right).</li>
+                <li>Function to run: <span className="font-mono text-xs">sendBankAlerts</span>. Deployment: Head.</li>
+                <li>Event source: Time-driven. Type: Minutes timer. Interval: Every 5 minutes.</li>
+                <li>Click Save and approve access if asked.</li>
+              </ol>
+            </li>
+            <li>Keep just one <span className="font-mono text-xs">sendBankAlerts</span> trigger. If you see two, delete one (⋮ → Delete trigger).</li>
           </ol>
           <p className="text-sm text-on-surface-variant">Only alerts arriving after setup are sent. Your next bank alert should appear within a few minutes.</p>
         </section>

@@ -1,6 +1,6 @@
 # Ledgerly: How Every Feature Works
 
-User guide for every screen and calculation in Ledgerly. Last updated: 2026-11-11.
+User guide for every screen and calculation in Ledgerly. Last updated: 2026-11-12.
 
 > **Keep this current.** Any change to a feature, formula or screen that a user would notice must update this guide (and its screenshot, if the screen looks different) in the same commit. See [AGENTS.md §15](../AGENTS.md#15-maintaining-this-file).
 >
@@ -358,7 +358,8 @@ Auto-capture turns bank alert emails in your Gmail into suggested transactions. 
 **Setting it up** (account menu → Gmail auto-capture):
 
 1. Tap **Create my script**. Ledgerly shows a Google Apps Script containing your personal key, once, with a copy button.
-2. Follow the numbered steps to paste it into script.google.com in your own Google account and run setup.
+2. Follow the numbered steps to paste it into script.google.com in your own Google account and run setup. HDFC's alert address (`alerts@hdfcbank.bank.in`) is already in BANK_SENDERS; for another bank, add or replace it with the address its alerts come from. Running setup again replaces only the script's own 5-minute check.
+   - **Check the trigger.** In script.google.com, click **Triggers** (clock icon, left sidebar). You should see `sendBankAlerts`, Time-based, every 5 minutes. If it's missing, click **+ Add Trigger** and choose: function `sendBankAlerts`, deployment Head, event source Time-driven, type Minutes timer, interval Every 5 minutes, then Save. Keep only one `sendBankAlerts` trigger. If you add it this way without running setup, the first run just notes the time, and alerts arriving after that are sent.
 3. The script checks Gmail every 5 minutes and sends only bank alerts that arrive after setup. The screen shows when the last alert arrived.
 4. **Create a new script** replaces the key (the old script stops working); **Turn off** revokes it. Both ask for confirmation, and alerts already waiting are kept.
 

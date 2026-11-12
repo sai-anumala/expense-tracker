@@ -4,7 +4,7 @@
 > Read this first; it should answer most questions without exploring the code.
 > **Keep it current:** any change to behaviour, data model, API, env vars, or deployment must update the relevant section here **in the same commit** (see [§15](#15-maintaining-this-file)).
 
-Last updated: 2026-11-11 · Branch model: `develop` → `main` · Live: <https://expense-tracker-sage-six-21.vercel.app>
+Last updated: 2026-11-12 · Branch model: `develop` → `main` · Live: <https://expense-tracker-sage-six-21.vercel.app>
 
 ---
 
@@ -530,7 +530,7 @@ Settled loans never alert; an overdue loan shows only its overdue alert. **Order
 
 ### Gmail auto-capture (`lib/bankAlertParser.ts`, `lib/gmailScript.ts`, `lib/captureMatch.ts`)
 Gmail only: no SMS and no inbound email service. A Google Apps Script in the user's own account checks every 5 minutes and posts new alerts from `BANK_SENDERS` to `/api/capture/email`.
-- **Script:** sends only alerts arriving after `setup()`. It tracks progress by message date, not by label, because banks reuse subjects and Gmail threads the alerts. On any non-200 it stops and retries that alert next run.
+- **Script:** `BANK_SENDERS` starts with HDFC's `alerts@hdfcbank.bank.in` (users add or replace for other banks). `setup()` deletes only its own `sendBankAlerts` trigger, never others in the project. If the trigger was added by hand (no `setup()`), the first run only saves the starting point. `/capture` steps tell users how to check or add the trigger (Triggers → + Add Trigger → `sendBankAlerts`, Head, Time-driven, Minutes timer, every 5 minutes). It sends only alerts arriving after `setup()`. It tracks progress by message date, not by label, because banks reuse subjects and Gmail threads the alerts. On any non-200 it stops and retries that alert next run.
 - **Never stored:** OTPs and codes, declined or failed payments, collect requests, future debits and mandates, statement and due reminders, adverts, and anything without a clear amount and direction. "Never share your OTP" warnings don't count as OTPs.
 - **Parsing** uses the subject and the first 800 characters of the body (footers hold disclaimers). The first of debit/credit wording decides direction ("A/c debited; RAVI credited" is spending). HDFC's "towards VPA x (MERCHANT)" format is covered. Unrecognised wording is dropped, so other banks may need rules.
 - **Payment method:** Credit Card, Debit Card, UPI or Bank Transfer. Plain "card" is left blank and the user must choose, because credit vs debit changes the balance.
