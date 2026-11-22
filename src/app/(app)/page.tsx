@@ -169,7 +169,7 @@ export default function Dashboard() {
                     }
                   >
                     <span
-                      className={`text-[36px] leading-[44px] font-bold tracking-[-0.03em] ${
+                      className={`text-[36px] leading-11 font-bold tracking-[-0.03em] ${
                         balance < 0 ? "text-secondary" : "text-on-surface"
                       }`}
                     >
