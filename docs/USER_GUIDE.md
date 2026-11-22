@@ -1,6 +1,6 @@
 # Ledgerly: How Every Feature Works
 
-User guide for every screen and calculation in Ledgerly. Last updated: 2026-11-12.
+User guide for every screen and calculation in Ledgerly. Last updated: 2026-11-22.
 
 > **Keep this current.** Any change to a feature, formula or screen that a user would notice must update this guide (and its screenshot, if the screen looks different) in the same commit. See [AGENTS.md §15](../AGENTS.md#15-maintaining-this-file).
 >
@@ -138,12 +138,20 @@ Under the balance, three tiles show **this calendar month** in your local time (
 | --- | --- | --- |
 | Income | Sum of income this month | Transfers and loans never count |
 | Spent | Sum of expenses this month, shown as −₹ | Credit card purchases count here, in the month you bought |
-| Remaining | Monthly budget − Spent | "—" when no budget is set; amber when under 30% of the budget is left, red below zero |
+| Remaining | Monthly budget − Spent | "—" when no budget is set; coloured by how much of the budget is used (see below) |
 | Credit Card | What you owe on the card (or "Card credit" if overpaid) | Only when a card is set up; never subtracted from the balance; tap it for the Credit Card screen |
 
-**Monthly Budget card.** Shows the % used (green below 85%, amber from 85%), a status pill and a bar:
+**Budget colours.** Every budget figure (the % used, the status pill, the bar, Remaining and each category) uses the same four colours:
 
-- **On track** below 85% used, **Watch spend** from 85% to 100%, **Over budget** above 100%.
+| Budget used | Colour | Pill says |
+| --- | --- | --- |
+| Up to 60% | Green | On track |
+| 61% to 80% | Yellow | Spending caution |
+| 81% to 100% | Orange | Almost exhausted |
+| Above 100% | Red (solid) | Over budget |
+
+**Monthly Budget card.** Shows the % used, a status pill and a bar in those colours:
+
 - **Daily safe pace** = what is left ÷ days left in the month, counting today (on 31 October, 1 day is left).
 - Example from the product spec: budget ₹3,000, spent ₹1,830.40 → Remaining ₹1,169.60; with 12 days left, the safe pace is ₹97.46 a day.
 
@@ -165,25 +173,19 @@ A budget is a monthly spending limit: one overall limit plus optional limits per
 
 **Monthly limit.** Budgets screen → Set Limit, type the amount, save. ₹0 means no budget. The overall box shows spent / limit, what is left and a status line:
 
-- Same rule as the Overview pill: On track below 85%, Watch spend 85–100%, Over budget above 100%.
-- Between 70% and 85% used, the figure is already amber and the line says "N% left" instead of "On track".
+- Same colours and wording as the Overview pill (see "Budget colours" above).
 - "₹X a day stays within budget" (what is left ÷ days left) shows only while money is left.
 
 **Category budgets.** Pick a category chip (built-in or your own, or **+ New** to create one), enter a limit, save. Each category appears once; Income can't have a budget. Swipe a category card left, or tap it, to **Edit** the limit or **Delete** it (with confirmation).
 
-| Spent / limit | Category badge | Colour |
-| --- | --- | --- |
-| Below 80% | On track | Green |
-| 80% to under 90% | Near limit | Amber |
-| 90% to 100% | NN% Spent | Amber |
-| Above 100% | Over limit | Amber |
+Each category card uses the same colours: the badge, the "left" text, the icon and the bar. The badge reads On track, Spending caution, Almost exhausted, or **Over limit** (solid red) above 100%.
 
 **Information notes (never blocking):**
 
 - When the budget **left** this month is more than your available balance. It compares what is left, not the whole limit, because money already spent has already left the balance.
 - When the category budgets add up to more than the monthly budget.
 
-**Worked example.** Monthly limit ₹20,000; Food limit ₹5,000. By the 20th you have spent ₹15,000 in total, ₹4,600 of it on Food. Overall: 75% used, amber figure, "25% left", ₹5,000 left over 11 days (counting the 20th) → ₹454.55 a day. Food: 92% → badge "92% Spent", and the bell shows "Food & Dining budget 92% used".
+**Worked example.** Monthly limit ₹20,000; Food limit ₹5,000. By the 20th you have spent ₹15,000 in total, ₹4,600 of it on Food. Overall: 75% used, yellow figure ("Spending caution"), ₹5,000 left over 11 days (counting the 20th) → ₹454.55 a day. Food: 92% → orange badge "Almost exhausted", and the bell shows "Food & Dining budget 92% used".
 
 Credit card purchases count in budgets in the month you buy, not when you pay the bill. Transfers and loans never count.
 

@@ -10,7 +10,7 @@ import {
   totalSpent,
   weeklySpend,
   within,
-  budgetLeftLevel,
+  budgetLevel,
   budgetStatus,
 } from "../insights";
 import { iso, local, tx } from "./fixtures";
@@ -230,25 +230,24 @@ describe("anchoredBalance (AGENTS.md §11)", () => {
   });
 });
 
-describe("budgetStatus", () => {
-  it("follows the Overview pill rule", () => {
-    expect(budgetStatus(0)).toBe("On track");
-    expect(budgetStatus(0.849)).toBe("On track");
-    expect(budgetStatus(0.85)).toBe("Watch spend");
-    expect(budgetStatus(1)).toBe("Watch spend");
-    expect(budgetStatus(1.01)).toBe("Over budget");
+describe("budgetLevel", () => {
+  it("is green up to 60%, yellow to 80%, orange to 100%, red over", () => {
+    expect(budgetLevel(0)).toBe("ok");
+    expect(budgetLevel(0.6)).toBe("ok");
+    expect(budgetLevel(0.601)).toBe("caution");
+    expect(budgetLevel(0.8)).toBe("caution");
+    expect(budgetLevel(0.801)).toBe("high");
+    expect(budgetLevel(1)).toBe("high");
+    expect(budgetLevel(1.001)).toBe("over");
   });
 });
 
-describe("budgetLeftLevel", () => {
-  it("turns low under 30% left and over past the limit", () => {
-    expect(budgetLeftLevel(1000, 0)).toBe("ok");
-    expect(budgetLeftLevel(1000, 700)).toBe("ok"); // exactly 30% left isn't under 30%
-    expect(budgetLeftLevel(1000, 700.5)).toBe("low");
-    expect(budgetLeftLevel(1000, 1000)).toBe("low");
-    expect(budgetLeftLevel(1000, 1000.5)).toBe("over");
-  });
-  it("is calm with no budget set", () => {
-    expect(budgetLeftLevel(0, 500)).toBe("ok");
+describe("budgetStatus", () => {
+  it("words each level", () => {
+    expect(budgetStatus(0.3)).toBe("On track");
+    expect(budgetStatus(0.7)).toBe("Spending caution");
+    expect(budgetStatus(0.9)).toBe("Almost exhausted");
+    expect(budgetStatus(1)).toBe("Almost exhausted");
+    expect(budgetStatus(1.01)).toBe("Over budget");
   });
 });

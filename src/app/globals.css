@@ -34,6 +34,12 @@
   --color-tertiary-container: #ae6100;
   --color-tertiary-fixed: #ffdcc1;
 
+  /* Budget scale: green (primary) → yellow (caution) → orange (tertiary) → red (secondary). `bar-*` are the progress-bar fills. */
+  --color-caution: #7a5c00;
+  --color-caution-fixed: #fff0b8;
+  --color-bar-caution: #e6b800;
+  --color-bar-high: #f07d00;
+
   --color-on-secondary: #ffffff;
   --color-on-tertiary: #ffffff;
 
@@ -113,6 +119,11 @@
   --color-on-tertiary: #3d2200;
   --color-tertiary-container: #d98a2b;
   --color-tertiary-fixed: #4a2c05;
+
+  --color-caution: #f5d04a;
+  --color-caution-fixed: #4a3a00;
+  --color-bar-caution: #f0c020;
+  --color-bar-high: #ff9a2e;
 
   --color-error: #ffb4ab;
 

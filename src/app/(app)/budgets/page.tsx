@@ -9,21 +9,20 @@ import { BalanceNotice } from "@/components/BalanceNotice";
 import { availableBalance, budgetAboveBalance } from "@/lib/balance";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { errorMessage } from "@/lib/store";
-import { AppHeader, IconTile, MonthPill, PageColumns, ProgressBar, RowHint } from "@/components/ui";
+import { AppHeader, IconTile, MonthPill, PageColumns, ProgressBar, RowHint, budgetStyle } from "@/components/ui";
 import { TabPage } from "@/components/BottomNav";
 import { ViewAllButton, useViewAll } from "@/components/ViewAll";
 import { EmptyState } from "@/components/TransactionRow";
 import { pickableCategories, type CategoryId } from "@/lib/data";
 import { MAX_CATEGORY_NAME, MAX_CUSTOM_CATEGORIES, normalizeCategoryName } from "@/lib/categoryRules";
 import { useAppData } from "@/lib/store";
-import { budgetLeftLevel, budgetStatus, periodBounds, spentByCategory, totalSpent, within } from "@/lib/insights";
+import { budgetLevel, budgetStatus, periodBounds, spentByCategory, totalSpent, within } from "@/lib/insights";
 import { daysLeftInMonth, money, moneySigned, monthLabel, plural } from "@/lib/format";
 
+/** Category card: same four levels as the overall budget; only the top label says "limit" instead of "budget". */
 function status(ratio: number) {
-  if (ratio > 1) return { warn: true, badge: "Over limit" };
-  if (ratio >= 0.9) return { warn: true, badge: `${Math.round(ratio * 100)}% Spent` };
-  if (ratio >= 0.8) return { warn: true, badge: "Near limit" };
-  return { warn: false, badge: "On track" };
+  const level = budgetLevel(ratio);
+  return { level, badge: level === "over" ? "Over limit" : budgetStatus(ratio) };
 }
 
 export default function Budgets() {
@@ -41,11 +40,10 @@ export default function Budgets() {
   const limit = budget.monthlyLimit;
   const remaining = limit - spent;
   const daysLeft = daysLeftInMonth();
-  const leftLevel = budgetLeftLevel(limit, spent);
-  const leftColor = { ok: "text-primary", low: "text-tertiary", over: "text-secondary" }[leftLevel];
-  // Low but below the "Watch spend" point: state the fact, since "On track" under an amber figure would read oddly.
-  const leftNote =
-    leftLevel === "low" && spent / limit < 0.85 ? `${Math.floor((remaining / limit) * 100)}% left` : budgetStatus(limit > 0 ? spent / limit : 0);
+  const used = limit > 0 ? spent / limit : 0;
+  const level = budgetLevel(used);
+  const leftColor = limit > 0 ? budgetStyle[level].text : "text-on-surface";
+  const leftNote = budgetStatus(used);
   // Informational checks (never block saving).
   // Walks every transaction, transfer and loan: recompute only when the data changes, not on every form change.
   const available = useMemo(() => availableBalance(transactions, transfers, loans, settings), [transactions, transfers, loans, settings]);
@@ -147,7 +145,7 @@ export default function Budgets() {
             {limit > 0 && (
               <>
                 <div className="mt-5">
-                  <ProgressBar value={spent / limit} tone={spent / limit < 0.9 ? "primary" : "tertiary"} />
+                  <ProgressBar value={used} level={level} />
                 </div>
                 {remaining > 0 && (
                   <p className="mt-3 flex items-center gap-2 text-sm tabular-nums text-on-surface-variant">
@@ -215,7 +213,7 @@ export default function Budgets() {
                         ]}
                       >
                         <div className="flex items-start gap-3">
-                          <IconTile icon={cat.icon} tone={s.warn ? "tertiary" : "neutral"} round size="sm" />
+                          <IconTile icon={cat.icon} tone={s.level === "ok" ? "neutral" : budgetStyle[s.level].tile} round size="sm" />
                           <div className="min-w-0 flex-1">
                             {/* Row 1: name (truncates) · spent / limit (never wraps) */}
                             <div className="flex items-baseline justify-between gap-2">
@@ -228,23 +226,21 @@ export default function Budgets() {
                             {/* Row 2: left/over · status badge (wraps on very narrow screens) */}
                             <div className="mt-1 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
                               <p
-                                className={`text-sm tabular-nums ${s.warn ? "font-medium text-tertiary" : "text-on-surface-variant"}`}
+                                className={`text-sm tabular-nums ${s.level === "ok" ? "text-on-surface-variant" : `font-medium ${budgetStyle[s.level].text}`}`}
                               >
                                 {left >= 0 ? `${money(left)} left` : `${money(left)} over`}
                               </p>
                               <span
-                                className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                                  s.warn ? "bg-tertiary-fixed" : "bg-primary-fixed-dim/70"
-                                }`}
+                                className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${budgetStyle[s.level].pill}`}
                               >
-                                <span className={`size-1.5 rounded-full ${s.warn ? "bg-tertiary" : "bg-primary"}`} />
+                                <span className={`size-1.5 rounded-full ${budgetStyle[s.level].bar}`} />
                                 {s.badge}
                               </span>
                             </div>
                           </div>
                         </div>
                         <div className="mt-3">
-                          <ProgressBar value={ratio} tone={s.warn ? "tertiary" : "primary"} />
+                          <ProgressBar value={ratio} level={s.level} />
                         </div>
                       </SwipeActions>
                       {editingCat === b.category && (

@@ -34,19 +34,30 @@ export const totalIncome = (list: Transaction[]) =>
 /** Sum of signed amounts (works for transactions and loan cash events). */
 export const net = (list: { amount: number }[]) => list.reduce((s, t) => s + t.amount, 0);
 
-/** How the monthly budget is going, from the share used. One rule for Overview and Budgets. */
-export const budgetStatus = (used: number) => (used < 0.85 ? "On track" : used <= 1 ? "Watch spend" : "Over budget");
+/** Share of the budget used: up to this is green ("healthy"). */
+export const BUDGET_CAUTION = 0.6;
+/** Up to this is yellow ("spending caution"); above it is orange until the limit, then red. */
+export const BUDGET_HIGH = 0.8;
 
-/** Share of the budget left below which the Remaining figure turns amber. */
-export const BUDGET_LOW_LEFT = 0.3;
+export type BudgetLevel = "ok" | "caution" | "high" | "over";
 
-/** How much of the monthly budget is left: drives the colour of the Remaining figure. */
-export function budgetLeftLevel(limit: number, spent: number): "ok" | "low" | "over" {
-  if (limit <= 0) return "ok";
-  const left = limit - spent;
-  if (left < 0) return "over";
-  return left / limit < BUDGET_LOW_LEFT ? "low" : "ok";
+/** One colour scale for every budget figure (Overview and Budgets): green, yellow, orange, red (over the limit). */
+export function budgetLevel(used: number): BudgetLevel {
+  if (used > 1) return "over";
+  if (used > BUDGET_HIGH) return "high";
+  if (used > BUDGET_CAUTION) return "caution";
+  return "ok";
 }
+
+const STATUS_TEXT: Record<BudgetLevel, string> = {
+  ok: "On track",
+  caution: "Spending caution",
+  high: "Almost exhausted",
+  over: "Over budget",
+};
+
+/** How the monthly budget is going, from the share used. Wording for `budgetLevel`. */
+export const budgetStatus = (used: number) => STATUS_TEXT[budgetLevel(used)];
 
 export function spentByCategory(list: Transaction[]) {
   const map = new Map<CategoryId, number>();

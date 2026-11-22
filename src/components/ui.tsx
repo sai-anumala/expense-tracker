@@ -4,8 +4,18 @@ import { NotificationBell } from "./NotificationBell";
 import { OverviewAlertBanner } from "./AlertBanner";
 import { ArrowLeft, CalendarDays, ChevronDown, Wallet, type LucideIcon } from "lucide-react";
 import type { Tone } from "@/lib/data";
+import type { BudgetLevel } from "@/lib/insights";
 
-const toneClasses: Record<Tone | "secondary", string> = {
+/** Classes for each budget level; every budget figure takes its colours from here. Over budget is solid red. */
+export const budgetStyle: Record<BudgetLevel, { text: string; pill: string; bar: string; tile: Tone | "secondary" | "caution" }> = {
+  ok: { text: "text-primary", pill: "bg-primary-fixed/50 text-primary", bar: "bg-primary", tile: "primary" },
+  caution: { text: "text-caution", pill: "bg-caution-fixed text-caution", bar: "bg-bar-caution", tile: "caution" },
+  high: { text: "text-tertiary", pill: "bg-tertiary-fixed text-tertiary", bar: "bg-bar-high", tile: "tertiary" },
+  over: { text: "text-secondary", pill: "bg-secondary text-on-secondary", bar: "bg-secondary", tile: "secondary" },
+};
+
+const toneClasses: Record<Tone | "secondary" | "caution", string> = {
+  caution: "bg-caution-fixed text-caution",
   neutral: "bg-surface-container-high text-on-surface",
   primary: "bg-primary-fixed/50 text-primary",
   tertiary: "bg-tertiary-fixed text-tertiary",
@@ -19,7 +29,7 @@ export function IconTile({
   round = false,
 }: {
   icon: LucideIcon;
-  tone?: Tone | "secondary";
+  tone?: Tone | "secondary" | "caution";
   size?: "sm" | "md";
   round?: boolean;
 }) {
@@ -113,14 +123,18 @@ export function MonthPill({ label }: { label: string }) {
   );
 }
 
+/** `level` colours a budget bar (green/yellow/orange/red); `tone` is for loans and the card limit. */
 export function ProgressBar({
   value,
   tone = "primary",
+  level,
 }: {
   value: number; // 0..1
   tone?: "primary" | "tertiary";
+  level?: BudgetLevel;
 }) {
   const pct = Math.max(0, Math.min(1, value)) * 100;
+  const fill = level ? budgetStyle[level].bar : tone === "primary" ? "bg-primary" : "bg-tertiary-container";
   return (
     <div
       className="h-2 w-full overflow-hidden rounded-full bg-surface-container-high"
@@ -129,10 +143,7 @@ export function ProgressBar({
       aria-valuemin={0}
       aria-valuemax={100}
     >
-      <div
-        className={`h-full rounded-full ${tone === "primary" ? "bg-primary" : "bg-tertiary-container"}`}
-        style={{ width: `${pct}%` }}
-      />
+      <div className={`h-full rounded-full ${fill}`} style={{ width: `${pct}%` }} />
     </div>
   );
 }

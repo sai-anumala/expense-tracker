@@ -4,7 +4,7 @@
 > Read this first; it should answer most questions without exploring the code.
 > **Keep it current:** any change to behaviour, data model, API, env vars, or deployment must update the relevant section here **in the same commit** (see [§15](#15-maintaining-this-file)).
 
-Last updated: 2026-11-12 · Branch model: `develop` → `main` · Live: <https://expense-tracker-sage-six-21.vercel.app>
+Last updated: 2026-11-22 · Branch model: `develop` → `main` · Live: <https://expense-tracker-sage-six-21.vercel.app>
 
 ---
 
@@ -487,9 +487,9 @@ All computed client-side in pages using `lib/insights.ts`. "This month" = local 
 | **Income** tile | Σ income this month |
 | **Spent** tile | Σ expenses this month (shown as −₹) |
 | **Remaining** tile (formerly "To Spend") | `monthlyLimit − spent this month`; "—" if no budget |
-| Remaining colour (display only) | Budget left `< 30%` of the limit: amber; below zero: red (`budgetLeftLevel`). Same on Budgets |
-| Monthly Budget "% used" pill | Green below 85% used, amber from 85% (same point as the status pill) |
-| Status pill | used = spent / limit: `< 0.85` "On track", `≤ 1` "Watch spend", else "Over budget" (only if a budget is set) |
+| Budget colour scale (display only, `budgetLevel` in `lib/insights.ts`, classes in `budgetStyle` in `components/ui.tsx`) | One scale for every budget figure on Overview and Budgets (status pill, "% used" pill, bars, Remaining figure, category badges): used `≤ 60%` green · `60-80%` yellow · `80-100%` orange · `> 100%` red (solid red pill, red bar and text). Tokens: green `primary`, yellow `caution`, orange `tertiary`, red `secondary` |
+| Monthly Budget "% used" pill | Colour from the scale above |
+| Status pill | used = spent / limit: green "On track", yellow "Spending caution", orange "Almost exhausted", red "Over budget" (only if a budget is set; `budgetStatus`) |
 | Monthly Budget bar | `% used = spent / limit`; "Daily safe pace" = `max(0, remaining) / daysLeft` |
 | `daysLeft` | days left in the month **including today** (31 Oct → 1) |
 | Recent transactions | latest **5** items of transactions **and transfers** merged by date, grouped Today / Yesterday / "Oct 28"; group header shows the net of that day's **transactions only** (transfers are net-zero; header hidden if the day has only transfers). Transfer amounts are neutral. Amounts: **expense red** (`text-secondary`), **income green** (`text-primary`) |
@@ -559,9 +559,9 @@ Gmail only: no SMS and no inbound email service. A Google Apps Script in the use
 - Transfer screen summary: "This month: N transfers · ₹X" (`transferTotals` over the current month).
 
 ### Budgets page
-- Overall box: Remaining's status line uses the same rule as the Overview pill (`budgetStatus`), except from 70% to 85% used, where the figure is already amber and the line says "25% left" rather than "On track". "₹X a day stays within budget" (remaining / days left) shows only while something is left.
+- Overall box: Remaining's figure and status line use the same scale and wording as the Overview pill (`budgetLevel`, `budgetStatus`). "₹X a day stays within budget" (remaining / days left) shows only while something is left.
 - Note when `budgetAboveBalance`: the budget **left** this month is more than the available balance. It compares what's left, not the whole limit, because money already spent has already left the balance. Informational only.
-- Per category: spent this month vs limit. Badge: `> 1` "Over limit", `≥ 0.9` "NN% Spent", `≥ 0.8` "Near limit", else "On track". Amber (tertiary) when ≥ 0.8.
+- Per category: spent this month vs limit. Badge, "left/over" text, icon and bar use the same scale; the badge text is the status wording, except over 100% says "Over limit".
 - Safe daily budget = `max(0, limit − spent) / daysLeft`.
 
 ### Analytics page
@@ -632,7 +632,8 @@ Tokens are defined in `src/app/globals.css` under `@theme` and used as Tailwind 
 |---|---|---|
 | `primary` | `#006947` | positive, CTAs, income |
 | `secondary` | `#af301d` | expenses, destructive, errors |
-| `tertiary` | `#8a4c00` | warnings (near/over budget) |
+| `tertiary` | `#8a4c00` | warnings; orange on the budget scale (81-100% used) |
+| `caution` / `caution-fixed` / `bar-caution` / `bar-high` | `#7a5c00` / `#fff0b8` / `#e6b800` / `#f07d00` | budget scale: yellow text / yellow tint / yellow bar fill / orange bar fill (dark mode has its own values) |
 | `on-primary` / `on-secondary` / `on-tertiary` | `#ffffff` | text on those filled colours (badges, danger buttons) |
 | `info` / `info-container` / `on-info-container` | `#2a78d6` / `#e3eefc` / `#1d5aa3` | transfers and info hints (neutral blue) |
 | `coin` / `on-coin` | `#eda100` / `#ffffff` | Transfer screen coin animation |
@@ -803,6 +804,7 @@ For isolated tests use a **temporary local MongoDB** (`mongod --dbpath <tmp> --p
 | 2026-11-06 | **Spidy**: a named coordinator agent, run as the main session with `claude --agent spidy`, sharing its workflow with `/team` | User request. One workflow file keeps the two from drifting apart. Claude Code's docs now describe nested subagents as supported, which the row above doubts; starting Spidy as a subagent is untested |
 | 2026-11-07 | Re-render fixes: memoized context value, reminders built once in the provider, no-op review refresh skipped, `useMemo` for balance and Analytics derivations. Stayed on React Context (no Redux) | A code review (not profiled) found avoidable re-renders; at ≤ 1000 items Context is enough. If paging/caching is needed later, TanStack Query fits better than Redux because the state is server data |
 | 2026-11-11 | Every colour moved onto tokens: transfer blue, coin, chart palette and on-colour text; unused per-category colours removed; `lib/themeColors.ts` for the two CSS-less spots | User request: change a colour in one place |
+| 2026-11-22 | **One four-level budget colour scale**: green ≤ 60%, yellow 61-80%, orange 81-100%, red over 100% (solid red pill), used for every budget figure; replaces the 30%-left, 80%, 85% and 90% points and the "N% left" line | User request. Four different amber points made the same budget look different on each element, and over budget was never red outside the Remaining figure. The 90% bell reminder (`BUDGET_WARN`) is unchanged |
 | 2026-11-11 | **Dark mode**: dark values for every token under `data-theme="dark"`; default light; Light / Dark / Device in the account menu; cookie + inline head script | User request. Cookie rather than localStorage (no app state in browser storage) and not on the account (a per-device display choice); the head script avoids a light flash before React loads |
 | 2026-11-03 | **In-app reminders**: bell panel + Overview banner computed from loaded data (`lib/alerts.ts`); no persistence of read/unread or dismissals (badge = current urgent + warning count). Banner rendered from `AppHeader` on `/` so the Overview page needn't change | Agreed card spec; no DB/storage needed, nothing to go stale. Push/email out of scope |
 

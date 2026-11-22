@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import { BalanceForm } from "@/components/BalanceForm";
 import { BalanceNotice } from "@/components/BalanceNotice";
-import { AppHeader, MonthPill, PageColumns, ProgressBar, RowHint } from "@/components/ui";
+import { AppHeader, MonthPill, PageColumns, ProgressBar, RowHint, budgetStyle } from "@/components/ui";
 import { TabPage } from "@/components/BottomNav";
 import { EmptyState, TransactionRow } from "@/components/TransactionRow";
 import { TransferRow } from "@/components/TransferRow";
@@ -33,7 +33,7 @@ import type { Transaction } from "@/lib/data";
 import { mergeFeed, type FeedItem } from "@/lib/transfers";
 import { loanTotals } from "@/lib/loans";
 import { availableCashEvents, cardSummary, currentCardDue, needsCardDuePrompt, type CardSummary } from "@/lib/creditCard";
-import { anchoredBalance, budgetLeftLevel, budgetStatus, categoryInsight, net, periodBounds, totalIncome, totalSpent, within } from "@/lib/insights";
+import { anchoredBalance, budgetLevel, budgetStatus, categoryInsight, net, periodBounds, totalIncome, totalSpent, within } from "@/lib/insights";
 import { dayBucket, dayMonth, daysLeftInMonth, plural, money, monthLabel } from "@/lib/format";
 
 const quickActions: { label: string; icon: typeof CirclePlus; href: string; accent?: boolean }[] = [
@@ -76,6 +76,7 @@ export default function Dashboard() {
   const limit = budget.monthlyLimit;
   const toSpend = limit - spent;
   const used = limit > 0 ? spent / limit : 0;
+  const level = budgetLevel(used);
   const daysLeft = daysLeftInMonth();
   const [whole, cents] = money(balance).split(".");
   const insight = categoryInsight(transactions);
@@ -97,9 +98,7 @@ export default function Dashboard() {
           <MonthPill label={monthLabel()} />
           {limit > 0 && (
             <span
-              className={`label-caps flex items-center gap-1.5 rounded-full px-3 py-2 ${
-                used < 0.85 ? "bg-primary-fixed/50 text-primary" : "bg-tertiary-fixed text-tertiary"
-              }`}
+              className={`label-caps flex items-center gap-1.5 rounded-full px-3 py-2 ${budgetStyle[level].pill}`}
             >
               <Leaf className="size-4" aria-hidden />{" "}
               {budgetStatus(used)}
@@ -203,7 +202,7 @@ export default function Dashboard() {
                     icon={PiggyBank}
                     label="Remaining"
                     value={limit > 0 ? `${toSpend < 0 ? "-" : ""}${money(toSpend)}` : "—"}
-                    tone={{ ok: "neutral", low: "tertiary", over: "secondary" }[budgetLeftLevel(limit, spent)] as "neutral" | "tertiary" | "secondary"}
+                    tone={limit > 0 ? budgetStyle[level].tile : "neutral"}
                     title={
                       limit > 0
                         ? `${money(limit)} monthly budget − ${money(spent)} spent this month`
@@ -241,9 +240,7 @@ export default function Dashboard() {
                 </h2>
                 {limit > 0 && (
                   <span
-                      className={`shrink-0 rounded-full px-3 py-1 text-sm font-semibold tabular-nums ${
-                        used < 0.85 ? "bg-primary-fixed/50 text-primary" : "bg-tertiary-fixed text-tertiary"
-                      }`}
+                      className={`shrink-0 rounded-full px-3 py-1 text-sm font-semibold tabular-nums ${budgetStyle[level].pill}`}
                     >
                     {Math.round(used * 100)}% used
                   </span>
@@ -251,7 +248,7 @@ export default function Dashboard() {
               </div>
               {limit > 0 ? (
                 <>
-                  <ProgressBar value={used} tone={used < 0.9 ? "primary" : "tertiary"} />
+                  <ProgressBar value={used} level={level} />
                   {/* Spent / cap: app font with tabular digits; wraps on very narrow screens */}
                   <div className="mt-3 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-xs tabular-nums text-on-surface-variant sm:text-sm">
                     <span>
@@ -440,12 +437,12 @@ function Metric({
   icon: typeof ArrowDown;
   label: string;
   value: string;
-  tone: "primary" | "secondary" | "tertiary" | "neutral";
+  tone: "primary" | "secondary" | "tertiary" | "caution" | "neutral";
   title?: string;
   /** Makes the whole tile a link. */
   href?: string;
 }) {
-  const color = { primary: "text-primary", secondary: "text-secondary", tertiary: "text-tertiary", neutral: "text-on-surface" }[tone];
+  const color = { primary: "text-primary", secondary: "text-secondary", tertiary: "text-tertiary", caution: "text-caution", neutral: "text-on-surface" }[tone];
   const box = "flex min-w-0 flex-col justify-between rounded-lg bg-surface-container-low p-2.5";
   const content = (
     <>
