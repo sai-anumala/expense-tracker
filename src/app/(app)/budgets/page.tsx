@@ -86,9 +86,10 @@ export default function Budgets() {
           {isPast ? (
             <button
               onClick={() => setViewMonth(current)}
-              className="rounded-full bg-surface-container-lowest px-4 py-2 text-sm font-medium text-primary"
+              aria-label={`Back to ${monthKeyLabel(current)}`}
+              className="shrink-0 whitespace-nowrap rounded-full bg-surface-container-lowest px-3 py-2 text-sm font-medium text-primary min-[360px]:px-4"
             >
-              Back to {monthKeyLabel(current)}
+              This month
             </button>
           ) : (
             <span className="flex items-center gap-2 rounded-full bg-surface-container-lowest px-4 py-2 text-sm font-medium text-primary">

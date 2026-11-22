@@ -29,7 +29,7 @@ export function MonthPicker() {
       <button
         onClick={() => setOpen(true)}
         aria-haspopup="dialog"
-        className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full bg-surface-container px-4 py-2 font-semibold"
+        className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full bg-surface-container px-3 py-2 font-semibold min-[360px]:px-4"
       >
         <CalendarDays className="size-4 text-primary" aria-hidden />
         {monthKeyLabel(viewMonth)}

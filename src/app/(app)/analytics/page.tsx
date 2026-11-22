@@ -82,9 +82,10 @@ export default function Analytics() {
           {isPast && (
             <button
               onClick={() => setViewMonth(currentMonth)}
-              className="rounded-full bg-surface-container-lowest px-4 py-2 text-sm font-medium text-primary"
+              aria-label={`Back to ${monthKeyLabel(currentMonth)}`}
+              className="shrink-0 whitespace-nowrap rounded-full bg-surface-container-lowest px-3 py-2 text-sm font-medium text-primary min-[360px]:px-4"
             >
-              Back to {monthKeyLabel(currentMonth)}
+              This month
             </button>
           )}
         </div>

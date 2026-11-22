@@ -141,7 +141,7 @@ Under the balance, three tiles show **the month on screen** (this calendar month
 | Remaining | Monthly budget − Spent | "—" when no budget is set; coloured by how much of the budget is used (see below) |
 | Credit Card | What you owe on the card (or "Card credit" if overpaid) | Only when a card is set up; never subtracted from the balance; tap it for the Credit Card screen |
 
-**Looking at an earlier month.** Tap the month pill ("November 2026") on Overview, Budgets or Analytics. A list shows this month and every earlier month that has transactions or a saved budget, each with how much was spent. Pick one and all of those screens switch to it; **Back to <this month>** returns. Past months are read-only, and they are measured against the limit you had in that month, not today's:
+**Looking at an earlier month.** Tap the month pill ("November 2026") on Overview, Budgets or Analytics. A list shows this month and every earlier month that has transactions or a saved budget, each with how much was spent. Pick one and all of those screens switch to it; **This month** (Budgets and Analytics) or **Back to <this month>** (Overview) returns. Past months are read-only, and they are measured against the limit you had in that month, not today's:
 
 - Income, Spent, Remaining, the status and "% used" pills, the bar and Recent Transactions follow the month. **View All** opens All Transactions on that month's dates.
 - Your balance, the Credit Card tile, loans and reminders always show today, because they are not monthly figures. "Daily safe pace", "days left" and the "+x% this mo" badge are hidden for past months.
