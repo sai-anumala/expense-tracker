@@ -115,7 +115,7 @@ export function RowHint({ noun, actions, className = "" }: { noun: string; actio
 
 export function MonthPill({ label }: { label: string }) {
   return (
-    <button className="flex items-center gap-2 rounded-full bg-surface-container px-4 py-2 font-semibold">
+    <button className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full bg-surface-container px-4 py-2 font-semibold">
       <CalendarDays className="size-4 text-primary" aria-hidden />
       {label}
       <ChevronDown className="size-4" aria-hidden />

@@ -94,13 +94,13 @@ export default function Dashboard() {
     <>
       <AppHeader subtitle="Overview" />
       <TabPage>
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <MonthPill label={monthLabel()} />
           {limit > 0 && (
             <span
-              className={`label-caps flex items-center gap-1.5 rounded-full px-3 py-2 ${budgetStyle[level].pill}`}
+              className={`label-caps flex min-w-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-2 ${budgetStyle[level].pill}`}
             >
-              <Leaf className="size-4" aria-hidden />{" "}
+              <Leaf className="hidden size-4 min-[420px]:block" aria-hidden />{" "}
               {budgetStatus(used)}
             </span>
           )}
