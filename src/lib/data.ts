@@ -122,13 +122,22 @@ export type Transaction = {
 
 import type { CardSettings } from "./creditCard";
 
-export type Budget = {
-  /** Overall monthly spending limit; 0 = not set. */
+/** The budget as it stood when it was last saved in a month ("YYYY-MM", the user's local month). */
+export type BudgetEntry = {
+  month: string;
   monthlyLimit: number;
   categories: { category: CategoryId; limit: number }[];
 };
 
-export const emptyBudget: Budget = { monthlyLimit: 0, categories: [] };
+export type Budget = {
+  /** Overall monthly spending limit; 0 = not set. */
+  monthlyLimit: number;
+  categories: { category: CategoryId; limit: number }[];
+  /** Earlier months' limits, so a past month is measured against what it had then (lib/budgetHistory.ts). */
+  history?: BudgetEntry[];
+};
+
+export const emptyBudget: Budget = { monthlyLimit: 0, categories: [], history: [] };
 
 export type Settings = {
   /** Total available balance exactly as entered; null = not set yet. */

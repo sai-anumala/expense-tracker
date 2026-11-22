@@ -24,7 +24,8 @@ import {
 } from "lucide-react";
 import { BalanceForm } from "@/components/BalanceForm";
 import { BalanceNotice } from "@/components/BalanceNotice";
-import { AppHeader, MonthPill, PageColumns, ProgressBar, RowHint, budgetStyle } from "@/components/ui";
+import { AppHeader, PageColumns, ProgressBar, RowHint, budgetStyle } from "@/components/ui";
+import { MonthPicker } from "@/components/MonthPicker";
 import { TabPage } from "@/components/BottomNav";
 import { EmptyState, TransactionRow } from "@/components/TransactionRow";
 import { TransferRow } from "@/components/TransferRow";
@@ -34,7 +35,9 @@ import { mergeFeed, type FeedItem } from "@/lib/transfers";
 import { loanTotals } from "@/lib/loans";
 import { availableCashEvents, cardSummary, currentCardDue, needsCardDuePrompt, type CardSummary } from "@/lib/creditCard";
 import { anchoredBalance, budgetLevel, budgetStatus, categoryInsight, net, periodBounds, totalIncome, totalSpent, within } from "@/lib/insights";
-import { dayBucket, dayMonth, daysLeftInMonth, plural, money, monthLabel } from "@/lib/format";
+import { dayBucket, dayMonth, daysLeftInMonth, plural, money } from "@/lib/format";
+import { budgetForMonth, monthBounds, monthKey, monthKeyLabel } from "@/lib/budgetHistory";
+import { NO_FILTERS, dayToValue, filtersToQuery } from "@/lib/transactionFilters";
 
 const quickActions: { label: string; icon: typeof CirclePlus; href: string; accent?: boolean }[] = [
   { label: "Add Expense", icon: CirclePlus, href: "/add", accent: true },
@@ -44,12 +47,18 @@ const quickActions: { label: string; icon: typeof CirclePlus; href: string; acce
 ];
 
 export default function Dashboard() {
-  const { transactions, budget, settings, saveSettings, loans, transfers, captured, categoryOf } = useAppData();
+  const { transactions, budget, settings, saveSettings, loans, transfers, captured, categoryOf, viewMonth, setViewMonth } = useAppData();
   const [tipOpen, setTipOpen] = useState(true);
   const [editingOpening, setEditingOpening] = useState(false);
 
+  // The month on screen. Past months are read-only and measured against the limit they had then; the balance,
+  // card, loans and reminders always show today.
+  const current = monthKey(new Date());
+  const isPast = viewMonth !== current;
+  const viewBounds = monthBounds(viewMonth);
   const [monthStart] = periodBounds("month");
-  const thisMonth = within(transactions, periodBounds("month"));
+  const thisMonth = within(transactions, viewBounds);
+  const monthBudget = budgetForMonth(budget, viewMonth, current);
 
   // Total Available Balance (Bank + UPI + Cash) = entered balance + cash events dated at/after it was entered
   // (see anchoredBalance). Card purchases don't count; card bill payments do. Loans move cash too, but never
@@ -73,17 +82,26 @@ export default function Dashboard() {
   // Triad row: this month's cash flow. Remaining = monthly budget cap − spent this month.
   const income = totalIncome(thisMonth);
   const spent = totalSpent(thisMonth);
-  const limit = budget.monthlyLimit;
+  const limit = monthBudget.monthlyLimit;
   const toSpend = limit - spent;
   const used = limit > 0 ? spent / limit : 0;
   const level = budgetLevel(used);
   const daysLeft = daysLeftInMonth();
   const [whole, cents] = money(balance).split(".");
-  const insight = categoryInsight(transactions);
+  const insight = categoryInsight(transactions, isPast ? new Date(viewBounds[1].getTime() - 1) : new Date());
 
   // Recent = latest 5 of transactions and transfers merged by date. Transfers are display-only here:
   // they never enter the balance, tiles or the day "net" below.
-  const feed = mergeFeed(transactions, transfers);
+  const everything = mergeFeed(transactions, transfers);
+  const feed = isPast
+    ? everything.filter((f) => {
+        const at = new Date(f.date).getTime();
+        return at >= viewBounds[0].getTime() && at < viewBounds[1].getTime();
+      })
+    : everything;
+  const viewAllHref = isPast
+    ? `/transactions${filtersToQuery({ ...NO_FILTERS, period: "custom", from: dayToValue(viewBounds[0]), to: dayToValue(new Date(viewBounds[1].getTime() - 1)) }, 1)}`
+    : "/transactions";
   const groups = new Map<string, FeedItem<Transaction>[]>();
   for (const f of feed.slice(0, 5)) {
     const k = dayBucket(f.date);
@@ -95,7 +113,7 @@ export default function Dashboard() {
       <AppHeader subtitle="Overview" />
       <TabPage>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <MonthPill label={monthLabel()} />
+          <MonthPicker />
           {limit > 0 && (
             <span
               className={`label-caps flex min-w-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-2 ${budgetStyle[level].pill}`}
@@ -105,6 +123,17 @@ export default function Dashboard() {
             </span>
           )}
         </div>
+
+        {isPast && (
+          <p className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-sm text-on-surface-variant">
+            <span>
+              Viewing {monthKeyLabel(viewMonth)}. Your balance, credit card and reminders show today.
+            </span>
+            <button onClick={() => setViewMonth(current)} className="font-medium text-primary hover:underline">
+              Back to {monthKeyLabel(current)}
+            </button>
+          </p>
+        )}
 
         <PageColumns>
           <div className="min-w-0 space-y-6">
@@ -129,7 +158,7 @@ export default function Dashboard() {
                       </button>
                     )}
                   </span>
-                  {growth !== null && Math.abs(growth) >= 0.05 && !editingOpening && (
+                  {growth !== null && Math.abs(growth) >= 0.05 && !editingOpening && !isPast && (
                     <span
                       className={`label-caps inline-flex shrink-0 items-center gap-1 rounded-full bg-surface-container px-2 py-0.5 normal-case ${
                         growth >= 0 ? "text-primary" : "text-secondary"
@@ -258,7 +287,8 @@ export default function Dashboard() {
                       of <b className="font-semibold text-on-surface">{money(limit)}</b> cap
                     </span>
                   </div>
-                  {/* Daily pace + days left: separate pill so they never collide on mobile */}
+                  {/* Daily pace + days left: separate pill so they never collide on mobile. Only for the month in progress. */}
+                  {!isPast && (
                   <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-xs sm:text-sm">
                     <span className="flex min-w-0 items-center gap-1.5 text-on-surface-variant">
                       <Clock className="size-4 shrink-0 text-tertiary" aria-hidden />
@@ -273,7 +303,15 @@ export default function Dashboard() {
                       {plural(daysLeft, "day")} left
                     </span>
                   </div>
+                  )}
+                  {isPast && !monthBudget.recorded && (
+                    <p className="mt-3 text-xs text-on-surface-variant">
+                      No limit was saved for this month, so the earliest saved limit is shown.
+                    </p>
+                  )}
                 </>
+              ) : isPast ? (
+                <p className="text-sm text-on-surface-variant">No monthly budget was set for this month.</p>
               ) : (
                 <div className="flex items-center justify-between gap-4">
                   <p className="text-sm text-on-surface-variant">No monthly budget set yet.</p>
@@ -329,7 +367,7 @@ export default function Dashboard() {
               <div className="mb-2 flex items-center justify-between px-1">
                 <h2 className="text-[22px] font-semibold tracking-tight">Recent Transactions</h2>
                 {feed.length > 0 && (
-                  <Link href="/transactions" className="flex items-center text-sm font-medium text-primary">
+                  <Link href={viewAllHref} className="flex items-center text-sm font-medium text-primary">
                     View All <ChevronRight className="size-4" aria-hidden />
                   </Link>
                 )}
@@ -338,16 +376,24 @@ export default function Dashboard() {
                 <RowHint noun="transaction" actions="view, edit or delete" className="mb-1 px-1" />
               )}
               {feed.length === 0 ? (
-                <EmptyState
-                  icon={ReceiptText}
-                  title="No transactions yet"
-                  body="Add your first expense or income and it will show up here."
-                  action={
-                    <Link href="/add" className="rounded-full bg-primary px-5 py-2.5 font-medium text-on-primary">
-                      Add transaction
-                    </Link>
-                  }
-                />
+                isPast ? (
+                  <EmptyState
+                    icon={ReceiptText}
+                    title={`Nothing in ${monthKeyLabel(viewMonth)}`}
+                    body="No transactions or transfers were recorded in this month."
+                  />
+                ) : (
+                  <EmptyState
+                    icon={ReceiptText}
+                    title="No transactions yet"
+                    body="Add your first expense or income and it will show up here."
+                    action={
+                      <Link href="/add" className="rounded-full bg-primary px-5 py-2.5 font-medium text-on-primary">
+                        Add transaction
+                      </Link>
+                    }
+                  />
+                )
               ) : (
                 [...groups].map(([day, list]) => {
                   // Net of transactions only: transfers move money between own accounts (net zero).
@@ -386,11 +432,11 @@ export default function Dashboard() {
                   <Lightbulb className="size-5" aria-hidden />
                 </span>
                 <p className="flex-1 text-sm">
-                  You&apos;re spending{" "}
+                  {isPast ? "You spent" : "You\u2019re spending"}{" "}
                   <span className={`font-medium ${insight.pct < 0 ? "text-primary" : "text-secondary"}`}>
                     {Math.abs(Math.round(insight.pct))}% {insight.pct < 0 ? "less" : "more"}
                   </span>{" "}
-                  on {categoryOf(insight.category).long.toLowerCase()} than last month.
+                  on {categoryOf(insight.category).long.toLowerCase()} {isPast ? `in ${monthKeyLabel(viewMonth)} than the month before` : "than last month"}.
                 </p>
                 <button aria-label="Dismiss tip" onClick={() => setTipOpen(false)} className="p-1">
                   <X className="size-5" />

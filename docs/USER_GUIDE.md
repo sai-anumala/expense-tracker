@@ -132,7 +132,7 @@ A one-time blue notice appears for older accounts whose balance was entered befo
 
 ![Overview screen](screenshots/overview.png)
 
-Under the balance, three tiles show **this calendar month** in your local time (1st 00:00 to the next 1st). Unlike the balance, they count every transaction dated in the month, whatever the payment method.
+Under the balance, three tiles show **the month on screen** (this calendar month unless you pick another one, see below) in your local time (1st 00:00 to the next 1st). Unlike the balance, they count every transaction dated in the month, whatever the payment method.
 
 | Tile | What it shows | Notes |
 | --- | --- | --- |
@@ -140,6 +140,13 @@ Under the balance, three tiles show **this calendar month** in your local time (
 | Spent | Sum of expenses this month, shown as −₹ | Credit card purchases count here, in the month you bought |
 | Remaining | Monthly budget − Spent | "—" when no budget is set; coloured by how much of the budget is used (see below) |
 | Credit Card | What you owe on the card (or "Card credit" if overpaid) | Only when a card is set up; never subtracted from the balance; tap it for the Credit Card screen |
+
+**Looking at an earlier month.** Tap the month pill ("November 2026") on Overview, Budgets or Analytics. A list shows this month and every earlier month that has transactions or a saved budget, each with how much was spent. Pick one and all of those screens switch to it; **Back to <this month>** returns. Past months are read-only, and they are measured against the limit you had in that month, not today's:
+
+- Income, Spent, Remaining, the status and "% used" pills, the bar and Recent Transactions follow the month. **View All** opens All Transactions on that month's dates.
+- Your balance, the Credit Card tile, loans and reminders always show today, because they are not monthly figures. "Daily safe pace", "days left" and the "+x% this mo" badge are hidden for past months.
+- A limit stays in force until you change it. If you changed the limit during a month, that month shows the last limit you saved in it. Limits are recorded from the release of this feature, so an earlier month with no saved limit shows the earliest one we have, and says so.
+- The choice resets to this month when you reload the app.
 
 **Budget colours.** Every budget figure (the % used, the status pill, the bar, Remaining and each category) uses the same four colours:
 
@@ -167,7 +174,7 @@ Under the balance, three tiles show **this calendar month** in your local time (
 
 ## 6. Budgets
 
-A budget is a monthly spending limit: one overall limit plus optional limits per category, all measured against expenses dated in the current month.
+A budget is a monthly spending limit: one overall limit plus optional limits per category, all measured against expenses dated in the month on screen (the current month unless you picked an earlier one with the month pill, where everything is read-only; see section 5).
 
 ![Budgets screen](screenshots/budgets.png)
 
@@ -243,7 +250,7 @@ A transfer records money moving between your own accounts (Bank, UPI, Cash, Cred
 2. Enter the amount, the date and time, and an optional note (up to 120 characters).
 3. Save. A new transfer saves at once and the form resets; editing asks "Save changes to this transfer?".
 
-A blue hint explains card bill payments and cash withdrawals. If a bill payment is more than your available balance, an amber warning appears (saving is still allowed). Below the form: "This month: N transfers · ₹X" and your transfer history. Transfers show with a blue ⇄ icon and a neutral amount with no + or −, in Recent Transactions, All Transactions and on this screen.
+A blue hint explains card bill payments and cash withdrawals. If a bill payment is more than your available balance, an amber warning appears (saving is still allowed). Below the form: "This month: N transfers · ₹X" (it names the month instead when you have picked an earlier one on another screen) and your transfer history. Transfers show with a blue ⇄ icon and a neutral amount with no + or −, in Recent Transactions, All Transactions and on this screen.
 
 Ledgerly keeps one total balance; it doesn't track separate Bank, UPI and Cash balances.
 
@@ -295,14 +302,14 @@ Loans track money you lent to or borrowed from friends, relatives, online apps o
 
 ## 10. Analytics
 
-Analytics compares your spending and income in the current week, month or year with the previous period of the same length. It uses transactions only: transfers and loans are excluded.
+Analytics compares your spending and income in the current week, month or year with the previous period of the same length. It uses transactions only: transfers and loans are excluded. It has the same month pill as Overview and Budgets: pick an earlier month and Week, Month and Year show the ones containing that month's last day (for October: the week of 26 Oct, October, 2026), the budget line uses the limit you had then, and the insight compares that month with the one before.
 
 ![Analytics screen](screenshots/analytics.png)
 
 - **Range tabs:** Week (Monday to Sunday), Month or Year. Totals show the % change against the previous period when that period had a value above zero.
 - **Budget line:** on Month, with a budget set, "Under budget by ₹X" or "Over budget by ₹X".
 - **Category breakdown (donut):** each expense category's share of the period. The 7 largest get their own colour; the rest fold into a grey "More categories (n)" slice, which lists its members. Hover (mouse), tap (touch) or Tab (keyboard) to focus a slice; the others fade, and the centre shows its amount. With nothing focused, the centre shows the top category. Below the ring, one row per slice shows name, amount, % and a bar; lists show 5 rows, then View all.
-- **Weekly trend:** spending in each of the last 4 Monday-start weeks. With a budget, a dashed target line shows the weekly equivalent: monthly limit × 12 ÷ 52.
+- **Weekly trend:** spending in each of the last 4 Monday-start weeks (for an earlier month, the 4 weeks to its end). With a budget, a dashed target line shows the weekly equivalent: monthly limit × 12 ÷ 52.
 - **Top merchants:** where most money went, by note/merchant.
 - **CSV export:** downloads every transaction, newest first, with columns Date, Type, Merchant / note, Category, Payment method, Amount (INR). Dates are DD/MM/YYYY HH:mm; amounts are plain numbers with 2 decimals, expenses negative. The file opens correctly in Excel, including non-English names.
 
@@ -396,7 +403,7 @@ Auto-capture turns bank alert emails in your Gmail into suggested transactions. 
 - Only the latest 1,000 transactions and 1,000 transfers are loaded.
 - Receipts: only the file name is saved.
 - No password reset by email yet, and no account deletion screen.
-- The month picker on Overview is a placeholder; tiles always show the current month.
+- The month picker shows earlier months (Overview, Budgets, Analytics and the Transfer summary), read-only. Limits are only remembered from the release of that feature onward, and the balance, Credit Card tile, loan totals and the "+x% this mo" badge always show today.
 
 **Quick reference**
 

@@ -77,19 +77,19 @@ export function topMerchants(list: Transaction[], n = 3) {
   return [...map.values()].sort((a, b) => b.amount - a.amount).slice(0, n);
 }
 
-/** Spending for the last `n` weeks (oldest first), current week last. */
-export function weeklySpend(list: Transaction[], n = 4) {
+/** Spending for the `n` weeks up to the week containing `ref` (oldest first, that week last). */
+export function weeklySpend(list: Transaction[], n = 4, ref = new Date()) {
   return Array.from({ length: n }, (_, i) => {
     const back = n - 1 - i;
-    const bounds = periodBounds("week", new Date(), back);
+    const bounds = periodBounds("week", ref, back);
     return { start: bounds[0], amount: totalSpent(within(list, bounds)), current: back === 0 };
   });
 }
 
-/** A real comparison of this month vs last month for the biggest-moving category, if any. */
-export function categoryInsight(list: Transaction[]) {
-  const now = spentByCategory(within(list, periodBounds("month")));
-  const prev = new Map(spentByCategory(within(list, periodBounds("month", new Date(), 1))).map((c) => [c.category, c.amount]));
+/** A real comparison of the month containing `ref` (default: this month) with the month before, for the biggest-moving category, if any. */
+export function categoryInsight(list: Transaction[], ref = new Date()) {
+  const now = spentByCategory(within(list, periodBounds("month", ref)));
+  const prev = new Map(spentByCategory(within(list, periodBounds("month", ref, 1))).map((c) => [c.category, c.amount]));
   let best: { category: CategoryId; pct: number } | null = null;
   for (const c of now) {
     const p = prev.get(c.category);

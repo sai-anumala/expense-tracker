@@ -2,7 +2,7 @@ import Link from "next/link";
 import { UserMenu } from "./UserMenu";
 import { NotificationBell } from "./NotificationBell";
 import { OverviewAlertBanner } from "./AlertBanner";
-import { ArrowLeft, CalendarDays, ChevronDown, Wallet, type LucideIcon } from "lucide-react";
+import { ArrowLeft, Wallet, type LucideIcon } from "lucide-react";
 import type { Tone } from "@/lib/data";
 import type { BudgetLevel } from "@/lib/insights";
 
@@ -110,16 +110,6 @@ export function RowHint({ noun, actions, className = "" }: { noun: string; actio
       <span className="pointer-fine:hidden">Swipe a {noun} left (or tap it)</span>
       <span className="hidden pointer-fine:inline">Click a {noun}</span> to {actions}.
     </p>
-  );
-}
-
-export function MonthPill({ label }: { label: string }) {
-  return (
-    <button className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full bg-surface-container px-4 py-2 font-semibold">
-      <CalendarDays className="size-4 text-primary" aria-hidden />
-      {label}
-      <ChevronDown className="size-4" aria-hidden />
-    </button>
   );
 }
 

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CalendarDays, TrendingDown, TrendingUp, Lightbulb, Download, ChartSpline } from "lucide-react";
 import { AppHeader, IconTile } from "@/components/ui";
+import { MonthPicker } from "@/components/MonthPicker";
 import { TabPage } from "@/components/BottomNav";
 import { ViewAllButton, useViewAll } from "@/components/ViewAll";
 import { EmptyState } from "@/components/TransactionRow";
@@ -19,15 +20,30 @@ import {
   type Range,
 } from "@/lib/insights";
 import { csvAmount, csvDateTime, downloadCsv, todayStamp } from "@/lib/csv";
-import { CURRENCY_SYMBOL, money, moneyWhole } from "@/lib/format";
+import { CURRENCY_SYMBOL, dayMonth, money, moneyWhole } from "@/lib/format";
+import { budgetForMonth, monthBounds, monthKey, monthKeyLabel } from "@/lib/budgetHistory";
 
 export default function Analytics() {
-  const { transactions, budget, categoryOf } = useAppData();
+  const { transactions, budget, categoryOf, customCategories, viewMonth, setViewMonth } = useAppData();
   const [range, setRange] = useState<Range>("month");
 
-  // Derived from the data and the range only, so hovering or tapping the ring doesn't recompute them.
-  const current = useMemo(() => within(transactions, periodBounds(range)), [transactions, range]);
-  const previous = useMemo(() => within(transactions, periodBounds(range, new Date(), 1)), [transactions, range]);
+  // Everything here follows the month chosen with the pill. For a past month the week, month and year are the
+  // ones containing that month's last day; for the current month they are the ones in progress.
+  const currentMonth = monthKey(new Date());
+  const isPast = viewMonth !== currentMonth;
+  const ref = useMemo(() => (isPast ? new Date(monthBounds(viewMonth)[1].getTime() - 1) : new Date()), [isPast, viewMonth]);
+  const monthBudget = budgetForMonth(budget, viewMonth, currentMonth, (c) => !c.startsWith("custom:") || customCategories.some((x) => x.id === c));
+  const periodName = !isPast
+    ? `this ${range}`
+    : range === "month"
+      ? `in ${monthKeyLabel(viewMonth)}`
+      : range === "year"
+        ? `in ${ref.getFullYear()}`
+        : `in the week of ${dayMonth(periodBounds("week", ref)[0])}`;
+
+  // Derived from the data, the range and the month only, so hovering or tapping the ring doesn't recompute them.
+  const current = useMemo(() => within(transactions, periodBounds(range, ref)), [transactions, range, ref]);
+  const previous = useMemo(() => within(transactions, periodBounds(range, ref, 1)), [transactions, range, ref]);
   const total = useMemo(() => totalSpent(current), [current]);
   const prevTotal = useMemo(() => totalSpent(previous), [previous]);
   const change = prevTotal > 0 ? ((total - prevTotal) / prevTotal) * 100 : null;
@@ -52,15 +68,27 @@ export default function Analytics() {
   const merchantList = useMemo(() => topMerchants(current, Infinity), [current]);
   const merchants = useViewAll(merchantList);
   const legend = useViewAll(slices);
-  const weeks = useMemo(() => weeklySpend(transactions), [transactions]);
-  const weekTarget = budget.monthlyLimit > 0 ? (budget.monthlyLimit * 12) / 52 : 0;
-  const insight = useMemo(() => categoryInsight(transactions), [transactions]);
-  const monthBudgetDelta = range === "month" && budget.monthlyLimit > 0 ? budget.monthlyLimit - total : null;
+  const weeks = useMemo(() => weeklySpend(transactions, 4, ref), [transactions, ref]);
+  const weekTarget = monthBudget.monthlyLimit > 0 ? (monthBudget.monthlyLimit * 12) / 52 : 0;
+  const insight = useMemo(() => categoryInsight(transactions, ref), [transactions, ref]);
+  const monthBudgetDelta = range === "month" && monthBudget.monthlyLimit > 0 ? monthBudget.monthlyLimit - total : null;
 
   return (
     <>
       <AppHeader subtitle="Analytics" />
       <TabPage>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <MonthPicker />
+          {isPast && (
+            <button
+              onClick={() => setViewMonth(currentMonth)}
+              className="rounded-full bg-surface-container-lowest px-4 py-2 text-sm font-medium text-primary"
+            >
+              Back to {monthKeyLabel(currentMonth)}
+            </button>
+          )}
+        </div>
+
         <div role="tablist" className="grid grid-cols-3 rounded-full bg-surface-container-high p-1.5 md:max-w-sm">
           {(["week", "month", "year"] as const).map((r) => (
             <button
@@ -81,7 +109,7 @@ export default function Analytics() {
           {/* Total */}
           <section className="card p-5">
             <div className="flex items-center justify-between">
-              <p className="label-caps text-on-surface-variant">Total spent this {range}</p>
+              <p className="label-caps text-on-surface-variant">Total spent {periodName}</p>
               <CalendarDays className="size-5 text-on-surface-variant" aria-hidden />
             </div>
             <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
@@ -124,7 +152,7 @@ export default function Analytics() {
                   <span className={`font-medium ${insight.pct < 0 ? "text-primary" : "text-secondary"}`}>
                     {Math.abs(Math.round(insight.pct))}% {insight.pct < 0 ? "less" : "more"}
                   </span>{" "}
-                  on {categoryOf(insight.category).long.toLowerCase()} this month than last month.
+                  on {categoryOf(insight.category).long.toLowerCase()} {isPast ? `in ${monthKeyLabel(viewMonth)} than the month before` : "this month than last month"}.
                 </p>
               </div>
             </section>
@@ -134,13 +162,13 @@ export default function Analytics() {
         {breakdown.length === 0 || !shown ? (
           <EmptyState
             icon={ChartSpline}
-            title={`No spending this ${range}`}
+            title={`No spending ${periodName}`}
             body="Once you add expenses, your category breakdown and top merchants will appear here."
           />
         ) : (
           <section className="card p-5">
             <h2 className="text-[22px] font-semibold tracking-tight">Category Breakdown</h2>
-            <p className="text-sm text-on-surface-variant">Where your money went this {range}</p>
+            <p className="text-sm text-on-surface-variant">Where your money went {periodName}</p>
             <div ref={chartRef} className="md:grid md:grid-cols-[14rem_minmax(0,1fr)] md:items-center md:gap-8">
               <div>
                 <div className="relative mx-auto my-6 aspect-square w-full max-w-56">
@@ -203,7 +231,7 @@ export default function Analytics() {
           {breakdown.length > 0 && (
             <section className="card p-5">
               <h2 className="text-[22px] font-semibold tracking-tight">Top Merchants</h2>
-              <p className="mb-4 text-sm text-on-surface-variant">Highest spending this {range}</p>
+              <p className="mb-4 text-sm text-on-surface-variant">Highest spending {periodName}</p>
               <ul className="space-y-2">
                 {merchants.shown.map((m) => (
                   <li key={m.name} className="flex items-center gap-4 rounded-lg bg-surface-container-low p-4">
@@ -225,13 +253,13 @@ export default function Analytics() {
             </section>
           )}
 
-          {/* Weekly trend (always last 4 weeks) */}
+          {/* Weekly trend (always 4 weeks, ending with the week of the chosen month's last day, or this week) */}
           <section className="card p-5">
             <h2 className="text-[22px] font-semibold tracking-tight">Weekly Spending Trend</h2>
             <p className="text-sm text-on-surface-variant">
-              Last 4 weeks{weekTarget > 0 && `, paced against ${money(weekTarget)}/wk from your budget`}
+              {isPast ? `4 weeks to the end of ${monthKeyLabel(viewMonth)}` : "Last 4 weeks"}{weekTarget > 0 && `, paced against ${money(weekTarget)}/wk from your budget`}
             </p>
-            <WeeklyBars weeks={weeks} target={weekTarget} />
+            <WeeklyBars weeks={weeks} target={weekTarget} badge={isPast ? "Month end" : "Now"} />
           </section>
         </div>
 
@@ -385,7 +413,8 @@ function Donut({
   );
 }
 
-function WeeklyBars({ weeks, target }: { weeks: { start: Date; amount: number; current: boolean }[]; target: number }) {
+/** `badge` marks the last bar: "Now" for the week in progress, "Month end" for a past month. */
+function WeeklyBars({ weeks, target, badge }: { weeks: { start: Date; amount: number; current: boolean }[]; target: number; badge: string }) {
   const max = Math.max(...weeks.map((w) => w.amount), target, 1) * 1.15;
   const h = 150;
   const label = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -405,7 +434,7 @@ function WeeklyBars({ weeks, target }: { weeks: { start: Date; amount: number; c
         {weeks.map((w) => (
           <div key={w.start.toISOString()} className="flex flex-col items-center gap-2">
             {w.current && (
-              <span className="rounded bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-on-primary">Now</span>
+              <span className="rounded bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-on-primary">{badge}</span>
             )}
             <span className={`tabular-nums text-xs ${w.current ? "font-semibold text-primary" : "text-on-surface-variant"}`}>
               {moneyWhole(w.amount)}

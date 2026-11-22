@@ -25,7 +25,7 @@ import { sanitizeAmount } from "@/components/AmountForm";
 import { EmptyState } from "@/components/TransactionRow";
 import { TransferRow } from "@/components/TransferRow";
 import { errorMessage, useAppData } from "@/lib/store";
-import { periodBounds } from "@/lib/insights";
+import { monthBounds, monthKey, monthKeyLabel } from "@/lib/budgetHistory";
 import { CURRENCY_SYMBOL, money, plural } from "@/lib/format";
 import { BalanceNotice, ShortfallText } from "@/components/BalanceNotice";
 import { availableBalance, shortfall } from "@/lib/balance";
@@ -77,7 +77,7 @@ function TransferForm({
   prefill: { from: TransferAccount; to: TransferAccount; amount: string };
 }) {
   const router = useRouter();
-  const { transfers, addTransfer, updateTransfer, transactions, loans, settings } = useAppData();
+  const { transfers, addTransfer, updateTransfer, transactions, loans, settings, viewMonth } = useAppData();
   const existing = editId ? transfers.find((t) => t.id === editId) : undefined;
   const history = useViewAll(transfers);
   const isEdit = Boolean(existing);
@@ -95,7 +95,9 @@ function TransferForm({
   const value = Number.parseFloat(amount) || 0;
   const tooLarge = value > MAX_AMOUNT;
   const canSave = value > 0 && !tooLarge && from !== to && !saving;
-  const month = transferTotals(transfers, periodBounds("month"));
+  // The month chosen with the month pill (this month by default).
+  const month = transferTotals(transfers, monthBounds(viewMonth));
+  const monthName = viewMonth === monthKey(new Date()) ? "This month" : monthKeyLabel(viewMonth);
   // Paying the card bill takes cash out of the available balance: warn (non-blocking) if it's more than you have.
   // When editing, ignore this transfer's old effect so it isn't counted twice.
   const cashOut = Math.max(0, -transferCashEffect({ from, to, amount: value }));
@@ -276,7 +278,7 @@ function TransferForm({
             <div className="mb-2 flex items-baseline justify-between gap-3 px-1">
               <h2 className="text-[22px] font-semibold tracking-tight">Your transfers</h2>
               <span className="text-right text-xs tabular-nums text-on-surface-variant">
-                This month: {plural(month.count, "transfer")} · {money(month.amount)}
+                {monthName}: {plural(month.count, "transfer")} · {money(month.amount)}
               </span>
             </div>
             {transfers.length === 0 ? (

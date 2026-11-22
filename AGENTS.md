@@ -143,7 +143,7 @@ App Router
         on mount: GET /api/auth/me, /api/transactions, /api/budget, /api/settings, /api/loans, /api/transfers, /api/captured, /api/categories (parallel); /api/captured again when the tab becomes visible
         shows spinner → data | error screen with "Try again"
         exposes useAppData(): { user, logout, transactions, add, update, remove,
-                                budget, saveBudget, settings, saveSettings, saveCard,
+                                budget, saveBudget, viewMonth, setViewMonth, settings, saveSettings, saveCard,
                                 loans, addLoan, updateLoan, removeLoan, addPayment, removePayment,
                                 transfers, addTransfer, updateTransfer, removeTransfer,
                                 captured, confirmCaptured, dismissCaptured,
@@ -207,7 +207,8 @@ src/
 │     ├─ capture/token/route.ts  GET status, POST create/replace, DELETE revoke
 │     └─ captured/route.ts       GET review list · captured/[id] DELETE dismiss · captured/[id]/confirm POST
 ├─ components/
-│  ├─ ui.tsx                     AppHeader (logo, NotificationBell, UserMenu; + OverviewAlertBanner below the header on "/"), SubHeader, PageColumns, RowHint, Logo, IconTile, MonthPill [no-op], ProgressBar, SectionTitle
+│  ├─ ui.tsx                     AppHeader (logo, NotificationBell, UserMenu; + OverviewAlertBanner below the header on "/"), SubHeader, PageColumns, RowHint, Logo, IconTile, ProgressBar, SectionTitle
+│  ├─ MonthPicker.tsx            The month pill on Overview and Budgets: tap for the months that have data; the choice (`viewMonth`) is shared by both screens
 │  ├─ ViewAll.tsx                useViewAll + ViewAllButton: lists show LIST_LIMIT (5), then View all / Show less
 │  ├─ Pagination.tsx             Previous / Page N of M / Next (All Transactions)
 │  ├─ DateRangePicker.tsx        DateRangeField + DateRangeDialog: custom date range calendar
@@ -233,6 +234,8 @@ src/
 │  ├─ store.tsx      (client)    TransactionsProvider, useAppData, api() fetch helper, ApiError, errorMessage()
 │  ├─ data.ts                    Categories (+ primaryCategories / moreCategories), paymentMethods + DEFAULT_PAYMENT_METHOD, types, empty defaults
 │  ├─ insights.ts                Pure calc helpers: periodBounds, within, totals, spentByCategory, topMerchants, weeklySpend, categoryInsight, anchoredBalance
+│  ├─ budgetHistory.ts           (shared, pure) month keys (`monthKey`, `monthBounds`), `budgetForMonth` (which limit a month is measured against), `upsertHistory`, `monthSummaries` (the picker list), `HISTORY_CAP`
+│  ├─ budgetInput.ts (server)    parseBudgetMonth: the `month` sent with a budget save
 │  ├─ alerts.ts                  (pure) buildAlerts → sorted reminders (card bill/usage, loans, budgets); thresholds as constants; isAttention
 │  ├─ theme.ts                  (shared) Light/Dark/Device preference: cookie `ledgerly_theme`, parse/resolve, `themeInitScript` (runs in <head> before paint)
 │  ├─ themeColors.ts             Hex copies of a few tokens for places without CSS vars (viewport themeColor, global-error); keep in sync with globals.css
@@ -312,6 +315,7 @@ Transactions and budgets store `custom:<_id>`, so a rename needs no other change
 | `key` | String | **unique** = owner's `userId` (string) |
 | `monthlyLimit` | Number | ≥ 0; `0` = not set |
 | `categories` | `[{ category, limit }]` | limit > 0; no duplicates; `income` not allowed |
+| `history` | `[{ month "YYYY-MM", monthlyLimit, categories[] }]` | The budget as last saved in each month, oldest first, at most 36 (oldest dropped). Written by `PUT /api/budget` when `month` is sent; the last save in a month wins. Lets a past month be measured against the limit it had (§11 "Viewing a past month"). Docs from before this lack it (treated as empty) |
 
 **`settings`** (`Settings`): one document per user
 | Field | Type | Rules |
@@ -402,8 +406,8 @@ All bodies are JSON objects; non-object or invalid JSON → **400**. Mongoose `V
 | `POST /api/transactions` | session | `{merchant, category, amount, date(ISO), account?, receiptName?}` | 201 `Transaction` | 400 with specific reason |
 | `PUT /api/transactions/:id` | session | same as POST | 200 `Transaction` | 404 if not found **or not owned** (same message) |
 | `DELETE /api/transactions/:id` | session | – | 200 `{id}` | 404 not found / not owned |
-| `GET /api/budget` | session | – | `{monthlyLimit, categories[]}` (defaults if none) | – |
-| `PUT /api/budget` | session | full budget (replaces) | 200 budget | 400 limits/duplicates |
+| `GET /api/budget` | session | – | `{monthlyLimit, categories[], history[]}` (defaults if none) | – |
+| `PUT /api/budget` | session | full budget (replaces): `{monthlyLimit, categories[], month?}`. `month` = the user's local `YYYY-MM`; with it the saved budget is also stored as that month's `history` entry | 200 budget (with `history`) | 400 limits/duplicates; 400 "Month must look like 2026-11." / "Month must be the current month." (only the server's UTC month ±1 is accepted, which covers every time zone) |
 | `GET /api/settings` | session | – | `{openingBalance, balanceAsOf, cardDueAtAnchor, card, dismissedAlerts}` (ISO / null / empty defaults) | – |
 | `PUT /api/settings` | session | `{openingBalance: number ≥ 0 \| null, cardDueAtAnchor?: number ≥ 0}` | 200 settings; server sets `balanceAsOf` = now (to the minute) and `cardDueAtAnchor` = given or **0**; both null when clearing the balance. `card` untouched | 400 "Opening balance must be 0 or more." / "Unpaid credit card amount must be 0 or more." / too large |
 | `PUT /api/settings/card` | session | `{statementDay, dueDay, limit?}` or `{card: null}` (remove) | 200 full settings; balance and `balanceAsOf` untouched | 400 "Statement day / Due day must be a whole day between 1 and 28.", "Due day must be different from the statement day.", "Credit limit must be more than zero (or leave it empty).", "Credit limit is too large." |
@@ -564,12 +568,21 @@ Gmail only: no SMS and no inbound email service. A Google Apps Script in the use
 - Per category: spent this month vs limit. Badge, "left/over" text, icon and bar use the same scale; the badge text is the status wording, except over 100% says "Over limit".
 - Safe daily budget = `max(0, limit − spent) / daysLeft`.
 
+### Viewing a past month (`lib/budgetHistory.ts`, `components/MonthPicker.tsx`)
+- The month pill on Overview and Budgets opens a list of the months that have data: the current month always, plus every earlier month with a transaction or a saved budget (never a future month), each with its total spent. The choice (`viewMonth` in the provider) is shared by both screens and resets to the current month on reload (no URL param, no localStorage).
+- **Which limit a past month uses** (`budgetForMonth`): the entry saved in that month or, if none, the latest entry before it (a limit stays until changed). Before the first saved entry nothing is known, so the earliest entry (or the live budget when there is no history) is used and the screen says so. The current month always uses the live budget. Categories that no longer exist (a deleted custom category) are left out of old limits.
+- **When history is written:** every budget save sends the user's local month; the server keeps one entry per month (last save wins). History starts from the release of this feature, so older months show the "earliest saved limit" note until then.
+- **Past months are read-only and month-scoped.** On Overview: Income, Spent, Remaining, status and "% used" pills, bar and Recent Transactions (that month's latest 5, with View All opening All Transactions on that month's dates) follow the month. Hidden: "N days left", "Daily safe pace", the "+x% this mo" badge and the insight tip. Unchanged (always today): Total Available Balance, Credit Card tile, loan totals, reminders. On Budgets: no Set Limit, add, edit or delete; no "left per day" line or balance note. The colour scale (§11 "Budget colour scale") is the same.
+- **Analytics follows the month too** (it has the month pill and a "Back to <current>" button). A reference date `ref` is now for the current month, or the last moment of a past month; the Week, Month and Year tabs are the ones containing `ref`, so for October: the week of its last day, October, 2026. Previous period = one back from `ref`. The budget line, weekly pace target (limit × 12 / 52) and the spending insight use that month's limit and compare it with the month before (`categoryInsight(list, ref)`). Weekly trend = 4 weeks ending with the week of `ref` (`weeklySpend(list, 4, ref)`), its last bar badged "Now" or "Month end". Headings read "in October 2026" / "in 2026" / "in the week of 26 Oct" instead of "this month".
+- The **Transfer** summary reads "This month: …" or "<Month year>: N transfers · ₹X" for the chosen month. The Overview spending tip compares the chosen month with the month before ("You spent 120% more … in October 2026 than the month before").
+- Not affected: the "+x% this mo" badge (hidden for past months), `lib/alerts.ts`, and the All Transactions quick periods ("This month" / "Last month" always mean the real ones).
+
 ### Analytics page
-- Range tabs Week / Month / Year → current period vs previous period of the same length; % change shown if previous > 0.
+- Range tabs Week / Month / Year → the period vs the previous one of the same length; % change shown if previous > 0. Follows the chosen month (§11 "Viewing a past month").
 - "Under/Over budget by" only on Month with a budget.
 - Donut = expense share by category. **Colours come from a validated palette applied in ring order** (largest slice first): tokens `--color-chart-1…7` in `globals.css` (`#2a78d6 #eb6834 #1baf7a #eda100 #e87ba4 #008300 #6250d6`) (dataviz validator on white: adjacent CVD ΔE ≥ 9.1, normal-vision ΔE ≥ 19.6; low-contrast slots are fine because every slice has a text label). **Max 7 named slices**; the rest fold into a grey `--color-chart-more` (`#b4bac3`) "More categories (n)" slice whose legend row lists its members (a single leftover keeps its own name). Flat ends with a small gap between slices. Categories have no colour of their own (the unused `color` field was removed).
 - **Focus:** nothing is highlighted by default (centre shows the top category). Mouse: hover focuses, leaving resets. Touch: tap toggles; tapping outside the chart and list resets. Keyboard: Tab (focus-visible) focuses, Enter/Space toggles, Esc resets. The focused slice thickens (11→15) and others fade to 30%; the legend dims the other rows. Handlers live in `focusHandlers()` (per pointer type, so a phone tap's hover+focus+click don't cancel each other). The centre label is `pointer-events-none`. The breakdown is shown only when the period has **expenses** (income-only periods show the empty state). Below the ring: **one row per slice** (full name, amount, %, thin bar in the slice colour).
-- Weekly trend = last 4 Monday-start weeks; dashed target = `monthlyLimit × 12 / 52` (if a budget is set).
+- Weekly trend = last 4 Monday-start weeks (ending with the week of the chosen month's last day for a past month); dashed target = `monthlyLimit × 12 / 52` (if a budget is set).
 - CSV export: all transactions, newest first → `Date, Type, Merchant / note, Category, Payment method, Amount (INR)` (see "CSV exports" below).
 
 ### CSV exports (`lib/csv.ts`, `lib/loanExport.ts`)
@@ -597,6 +610,7 @@ Gmail only: no SMS and no inbound email service. A Google Apps Script in the use
 - **DateTimePicker:** field shows "Today, 2:45 PM" / "Yesterday, …" / "Fri, 24 Oct, …"; tapping opens a **compact centered pop-up** (max 20rem wide, 1rem margin on phones) with preview, Now/Yesterday/2 days ago, Monday-first calendar, hour/minute/AM-PM; future days and times disabled; Done/Cancel; Esc or backdrop tap closes.
 - **Transaction rows** (Overview recent list, All Transactions; built on `SwipeActions`): **swipe left** (touch or mouse drag) or **tap / Enter** to reveal three actions: **View** (read-only details pop-up with an Edit button), **Edit** (`/add?id=…`), **Delete** (confirm dialog, "Yes, delete"). Only one row is open at a time (window event `ledgerly:row-open`); vertical scrolling stays native (`touch-action: pan-y`). Rows no longer navigate on tap.
 - **Monthly Budget card:** app font with tabular digits; the spent/cap row and the "Daily safe pace" row wrap on narrow phones, with "N days left" in its own pill so they never collide.
+- **Month pill** (`MonthPicker`, Overview and Budgets): tap to open a "Choose a month" dialog (Esc, backdrop tap or Close dismisses; the chosen month is checked). Choosing a past month shows "Viewing <month>… Back to <current month>" under the pill; see §11 "Viewing a past month".
 - **Budgets:** Set Limit (inline AmountForm), add category budget (chips + amount). Category cards use **SwipeActions**: swipe left / tap → **Edit** (inline limit form under the card) and **Delete** (confirm dialog). Card layout is two rows (name ↔ spent / limit; left/over ↔ status badge) with truncation and wrapping so nothing overlaps on small phones.
 - **Loans tab** (`/loans`): summary cards, **I lent money** / **I borrowed** buttons → `/loans/new?dir=…`, Open/Settled tabs, **Download all loans (CSV)** at the end (from `lg`: summary and buttons left, tabs and list right, so the tabs match the list's width), cards with progress bar, Overdue badge, next payment and repay-by date. Tap → detail.
 - **Loan form** (`/loans/new`, `?id=` to edit): I lent / I borrowed tabs, big amount, optional **Total to repay** (interest/fees), name, source chips (Friend, Relative, Online app, Bank, Other), date (DateTimePicker), payment method (default UPI), optional **Repay by** (native date input), optional **Monthly repayment plan** (amount + day 1–28), note. Edit → confirm dialog.
@@ -703,7 +717,7 @@ Also bump "Last updated" at the top. Keep entries factual and short; link to fil
 ### Unit tests (Vitest)
 - Run: `npm test` (single run, as in CI) or `npm run test:watch`. Takes about a second; no network, no database.
 - Location: `src/lib/__tests__/<module>.test.ts` (one file per module in `src/lib`). Shared builders (`tx`, `loan`, `payment`, `local`, `iso`) live in `src/lib/__tests__/fixtures.ts`.
-- Covered: `insights` (period bounds, totals, `anchoredBalance`), `loans`, `balance`, `csv`, `loanExport`, `creditCard`, `transfers`, `bankAlertParser`, `captureMatch`, `gmailScript`, `alerts`, `theme` (incl. running the head script against a fake document), `deadline`, `categories`, `transactionFilters`, `safeNext`, `rateLimit` (time limits and blocking, with the database mocked), and the server validators `transactionInput`, `loanInput`, `authInput`, `transferInput`, `settingsInput`. Not covered: React components, API routes, Mongoose models.
+- Covered: `insights` (period bounds, totals, `anchoredBalance`, `budgetLevel`), `budgetHistory` (month keys, `budgetForMonth`, history upsert/cap, picker list), `budgetInput` (the `month` check), `loans`, `balance`, `csv`, `loanExport`, `creditCard`, `transfers`, `bankAlertParser`, `captureMatch`, `gmailScript`, `alerts`, `theme` (incl. running the head script against a fake document), `deadline`, `categories`, `transactionFilters`, `safeNext`, `rateLimit` (time limits and blocking, with the database mocked), and the server validators `transactionInput`, `loanInput`, `authInput`, `transferInput`, `settingsInput`. Not covered: React components, API routes, Mongoose models.
 - Config: `vitest.config.mts`: `@/*` → `src/*` alias, `environment: "node"`, `server-only` aliased to the empty `test/server-only-stub.ts` (so server validators import cleanly). `test/setup.ts` deletes `MONGODB_URI` and restores real timers after each test.
 - **Time zone is pinned to `Asia/Kolkata`** (set in the config and the setup file), so local-date maths gives the same results on any machine. Use `local()`/`iso()` from fixtures for dates and `vi.useFakeTimers()` + `vi.setSystemTime()` wherever "now" matters.
 - Convention: a known bug can be pinned with `it.fails` (listed in §19); when it's fixed the test starts failing, so switch it to `it`. (The first one, `slug()` splitting Devanagari/accented names, was fixed on 2026-11-03.)
@@ -805,6 +819,7 @@ For isolated tests use a **temporary local MongoDB** (`mongod --dbpath <tmp> --p
 | 2026-11-07 | Re-render fixes: memoized context value, reminders built once in the provider, no-op review refresh skipped, `useMemo` for balance and Analytics derivations. Stayed on React Context (no Redux) | A code review (not profiled) found avoidable re-renders; at ≤ 1000 items Context is enough. If paging/caching is needed later, TanStack Query fits better than Redux because the state is server data |
 | 2026-11-11 | Every colour moved onto tokens: transfer blue, coin, chart palette and on-colour text; unused per-category colours removed; `lib/themeColors.ts` for the two CSS-less spots | User request: change a colour in one place |
 | 2026-11-22 | **One four-level budget colour scale**: green ≤ 60%, yellow 61-80%, orange 81-100%, red over 100% (solid red pill), used for every budget figure; replaces the 30%-left, 80%, 85% and 90% points and the "N% left" line | User request. Four different amber points made the same budget look different on each element, and over budget was never red outside the Remaining figure. The 90% bell reminder (`BUDGET_WARN`) is unchanged |
+| 2026-11-22 | **Month picker with budget history**: past months are viewable (read-only) on Overview and Budgets, measured against the limit saved in that month. Each budget save also writes a per-month entry in `budgets.history` (client sends its local month, server accepts UTC month ±1), capped at 36 | User request (look back at last month; limit "from that month"). Server runs in UTC, so the client supplies the month. Shared month in the provider so both screens agree. Balance, card and reminders stay "today" because they are not monthly figures |
 | 2026-11-11 | **Dark mode**: dark values for every token under `data-theme="dark"`; default light; Light / Dark / Device in the account menu; cookie + inline head script | User request. Cookie rather than localStorage (no app state in browser storage) and not on the account (a per-device display choice); the head script avoids a light flash before React loads |
 | 2026-11-03 | **In-app reminders**: bell panel + Overview banner computed from loaded data (`lib/alerts.ts`); no persistence of read/unread or dismissals (badge = current urgent + warning count). Banner rendered from `AppHeader` on `/` so the Overview page needn't change | Agreed card spec; no DB/storage needed, nothing to go stale. Push/email out of scope |
 
@@ -816,7 +831,7 @@ For isolated tests use a **temporary local MongoDB** (`mongod --dbpath <tmp> --p
 - Sessions are stateless JWTs: changing the password does **not** sign out other devices (they stay signed in until their 30-day cookie expires). Fix would need a per-user `tokenVersion`/`passwordChangedAt` checked on each request.
 - Rate limits are fixed windows per IP/email; many users behind one NAT share the per-IP budget (20 logins / 15 min, 10 sign-ups / hour).
 - No UI or end-to-end tests yet (unit tests cover `src/lib` only; consider Playwright for flows). API routes (incl. rate limiting) are verified manually against a temporary MongoDB, not by automated tests.
-- Month picker is a non-functional placeholder.
+- Month picker: history starts from its release, so earlier months show the earliest saved limit (noted on screen); no per-month budget editing and no future months. The "+x% this mo" badge, balance, Credit Card tile and loan totals stay "today" for past months.
 - Reminders are in-app only: no push/email notifications; no read/unread state (reminders can be removed, see §11).
 - Receipts: only the file name is stored; no upload or storage.
 - Remaining `npm audit` item: PostCSS inside Next (build-time only; fixed only in Next 16).

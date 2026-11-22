@@ -144,6 +144,32 @@ describe("weeklySpend", () => {
   });
 });
 
+describe("weeklySpend with a reference date", () => {
+  it("ends with the week containing that date", () => {
+    // 30 Sep 2026 is a Wednesday: its week starts Mon 28 Sep.
+    const list = [tx(-5, iso(2026, 9, 30)), tx(-7, iso(2026, 9, 21)), tx(-99, iso(2026, 11, 3))];
+    const weeks = weeklySpend(list, 4, local(2026, 9, 30, 23, 59));
+    expect(weeks.map((w) => w.start)).toEqual([local(2026, 9, 7), local(2026, 9, 14), local(2026, 9, 21), local(2026, 9, 28)]);
+    expect(weeks.map((w) => w.amount)).toEqual([0, 0, 7, 5]);
+    expect(weeks[3].current).toBe(true); // the last bar is the reference week
+  });
+});
+
+describe("categoryInsight with a reference date", () => {
+  it("compares the month containing that date with the one before", () => {
+    const list = [
+      tx(-100, iso(2026, 9, 5), { category: "food" }),
+      tx(-300, iso(2026, 10, 5), { category: "food" }), // October vs September: +200%
+      tx(-100, iso(2026, 11, 2), { category: "food" }), // November must not leak in
+    ];
+    expect(categoryInsight(list, local(2026, 10, 31, 23, 59))).toEqual({ category: "food", pct: 200 });
+  });
+  it("works across a year end", () => {
+    const list = [tx(-100, iso(2025, 12, 5)), tx(-50, iso(2026, 1, 5))];
+    expect(categoryInsight(list, local(2026, 1, 31))).toEqual({ category: "food", pct: -50 });
+  });
+});
+
 describe("categoryInsight", () => {
   it("picks the category with the biggest % change present in both months", () => {
     const list = [

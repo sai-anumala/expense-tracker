@@ -9,15 +9,17 @@ import { BalanceNotice } from "@/components/BalanceNotice";
 import { availableBalance, budgetAboveBalance } from "@/lib/balance";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { errorMessage } from "@/lib/store";
-import { AppHeader, IconTile, MonthPill, PageColumns, ProgressBar, RowHint, budgetStyle } from "@/components/ui";
+import { AppHeader, IconTile, PageColumns, ProgressBar, RowHint, budgetStyle } from "@/components/ui";
+import { MonthPicker } from "@/components/MonthPicker";
 import { TabPage } from "@/components/BottomNav";
 import { ViewAllButton, useViewAll } from "@/components/ViewAll";
 import { EmptyState } from "@/components/TransactionRow";
 import { pickableCategories, type CategoryId } from "@/lib/data";
 import { MAX_CATEGORY_NAME, MAX_CUSTOM_CATEGORIES, normalizeCategoryName } from "@/lib/categoryRules";
 import { useAppData } from "@/lib/store";
-import { budgetLevel, budgetStatus, periodBounds, spentByCategory, totalSpent, within } from "@/lib/insights";
-import { daysLeftInMonth, money, moneySigned, monthLabel, plural } from "@/lib/format";
+import { budgetLevel, budgetStatus, spentByCategory, totalSpent, within } from "@/lib/insights";
+import { daysLeftInMonth, money, moneySigned, plural } from "@/lib/format";
+import { budgetForMonth, monthBounds, monthKey, monthKeyLabel } from "@/lib/budgetHistory";
 
 /** Category card: same four levels as the overall budget; only the top label says "limit" instead of "budget". */
 function status(ratio: number) {
@@ -26,7 +28,7 @@ function status(ratio: number) {
 }
 
 export default function Budgets() {
-  const { transactions, transfers, budget, saveBudget, loans, settings, customCategories, categoryOf } = useAppData();
+  const { transactions, transfers, budget, saveBudget, loans, settings, customCategories, categoryOf, viewMonth, setViewMonth } = useAppData();
   const [editingLimit, setEditingLimit] = useState(false);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,10 +36,15 @@ export default function Budgets() {
   const [editingCat, setEditingCat] = useState<CategoryId | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const monthTx = within(transactions, periodBounds("month"));
+  // The month on screen. A past month is read-only and measured against the limits it had then
+  // (a deleted custom category is left out of old limits).
+  const current = monthKey(new Date());
+  const isPast = viewMonth !== current;
+  const monthBudget = budgetForMonth(budget, viewMonth, current, (c) => !c.startsWith("custom:") || customCategories.some((x) => x.id === c));
+  const monthTx = within(transactions, monthBounds(viewMonth));
   const spent = totalSpent(monthTx);
   const byCat = new Map(spentByCategory(monthTx).map((c) => [c.category, c.amount]));
-  const limit = budget.monthlyLimit;
+  const limit = monthBudget.monthlyLimit;
   const remaining = limit - spent;
   const daysLeft = daysLeftInMonth();
   const used = limit > 0 ? spent / limit : 0;
@@ -47,10 +54,10 @@ export default function Budgets() {
   // Informational checks (never block saving).
   // Walks every transaction, transfer and loan: recompute only when the data changes, not on every form change.
   const available = useMemo(() => availableBalance(transactions, transfers, loans, settings), [transactions, transfers, loans, settings]);
-  const uncovered = budgetAboveBalance(limit, spent, available);
-  const categoryTotal = budget.categories.reduce((s, c) => s + c.limit, 0);
+  const uncovered = isPast ? null : budgetAboveBalance(limit, spent, available); // the balance is today's
+  const categoryTotal = monthBudget.categories.reduce((s, c) => s + c.limit, 0);
   const categoriesAboveLimit = limit > 0 && categoryTotal > limit;
-  const list = useViewAll(budget.categories);
+  const list = useViewAll(monthBudget.categories);
   const choices: CategoryId[] = [...pickableCategories.filter((c) => c !== "other"), ...customCategories.map((c) => c.id), "other"];
   const unbudgeted = choices.filter((c) => !budget.categories.some((b) => b.category === c));
   const canCreate = customCategories.length < MAX_CUSTOM_CATEGORIES;
@@ -74,12 +81,28 @@ export default function Budgets() {
     <>
       <AppHeader subtitle="Budgets" />
       <TabPage>
-        <div className="flex items-center justify-between">
-          <MonthPill label={monthLabel()} />
-          <span className="flex items-center gap-2 rounded-full bg-surface-container-lowest px-4 py-2 text-sm font-medium text-primary">
-            <span className="size-2 rounded-full bg-primary" /> {plural(daysLeft, "day")} left
-          </span>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <MonthPicker />
+          {isPast ? (
+            <button
+              onClick={() => setViewMonth(current)}
+              className="rounded-full bg-surface-container-lowest px-4 py-2 text-sm font-medium text-primary"
+            >
+              Back to {monthKeyLabel(current)}
+            </button>
+          ) : (
+            <span className="flex items-center gap-2 rounded-full bg-surface-container-lowest px-4 py-2 text-sm font-medium text-primary">
+              <span className="size-2 rounded-full bg-primary" /> {plural(daysLeft, "day")} left
+            </span>
+          )}
         </div>
+
+        {isPast && (
+          <p className="px-1 text-sm text-on-surface-variant">
+            Viewing {monthKeyLabel(viewMonth)}, read-only. Limits are the ones saved for that month
+            {monthBudget.recorded ? "." : "; none was saved then, so the earliest saved limits are shown."}
+          </p>
+        )}
 
         {error && (
           <p role="alert" className="rounded-lg bg-secondary-fixed px-4 py-3 text-sm text-secondary">
@@ -98,7 +121,7 @@ export default function Budgets() {
                   {limit > 0 && <span className="text-base font-normal text-on-surface-variant">limit</span>}
                 </p>
               </div>
-              {!editingLimit && (
+              {!editingLimit && !isPast && (
                 <button
                   onClick={() => setEditingLimit(true)}
                   className="flex shrink-0 items-center gap-2 rounded-full bg-surface-container-high px-4 py-2 text-sm"
@@ -147,7 +170,7 @@ export default function Budgets() {
                 <div className="mt-5">
                   <ProgressBar value={used} level={level} />
                 </div>
-                {remaining > 0 && (
+                {remaining > 0 && !isPast && (
                   <p className="mt-3 flex items-center gap-2 text-sm tabular-nums text-on-surface-variant">
                     <CircleCheck className="size-4 shrink-0 text-primary" aria-hidden />
                     {money(remaining / daysLeft)} a day stays within budget
@@ -170,11 +193,13 @@ export default function Budgets() {
             <div className="mb-3">
               <h2 className="text-[22px] font-semibold tracking-tight">Category Budgets</h2>
               <p className="text-sm text-on-surface-variant">
-                {budget.categories.length
-                  ? `${budget.categories.length} ${budget.categories.length === 1 ? "category" : "categories"} with limits`
-                  : "Set limits for individual categories"}
+                {monthBudget.categories.length
+                  ? `${monthBudget.categories.length} ${monthBudget.categories.length === 1 ? "category" : "categories"} with limits`
+                  : isPast
+                    ? "No category limits were set for this month"
+                    : "Set limits for individual categories"}
               </p>
-              {budget.categories.length > 0 && (
+              {monthBudget.categories.length > 0 && !isPast && (
                 <RowHint noun="budget" actions="edit or delete" />
               )}
               {categoriesAboveLimit && (
@@ -187,11 +212,11 @@ export default function Budgets() {
               )}
             </div>
 
-            {budget.categories.length === 0 && !adding ? (
+            {monthBudget.categories.length === 0 && !adding ? (
               <EmptyState
                 icon={PieChart}
                 title="No category budgets"
-                body="Add a limit for a category to track it here."
+                body={isPast ? "No category limits were saved for this month." : "Add a limit for a category to track it here."}
               />
             ) : (
               <ul className="grid grid-cols-1 gap-3 md:grid-cols-2 md:items-start lg:grid-cols-1">
@@ -203,6 +228,40 @@ export default function Budgets() {
                   const left = b.limit - catSpent;
                   return (
                     <li key={b.category} className="card overflow-hidden p-0">
+                      {isPast ? (
+                        <div className="bg-surface-container-lowest p-4" aria-label={`${cat.long} limit, ${money(catSpent)} of ${money(b.limit)}`}>
+                        <div className="flex items-start gap-3">
+                          <IconTile icon={cat.icon} tone={s.level === "ok" ? "neutral" : budgetStyle[s.level].tile} round size="sm" />
+                          <div className="min-w-0 flex-1">
+                            {/* Row 1: name (truncates) · spent / limit (never wraps) */}
+                            <div className="flex items-baseline justify-between gap-2">
+                              <p className="min-w-0 truncate font-semibold">{cat.long}</p>
+                              <p className="shrink-0 whitespace-nowrap tabular-nums">
+                                <span className="font-semibold">{money(catSpent)}</span>
+                                <span className="text-xs text-on-surface-variant"> / {money(b.limit)}</span>
+                              </p>
+                            </div>
+                            {/* Row 2: left/over · status badge (wraps on very narrow screens) */}
+                            <div className="mt-1 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+                              <p
+                                className={`text-sm tabular-nums ${s.level === "ok" ? "text-on-surface-variant" : `font-medium ${budgetStyle[s.level].text}`}`}
+                              >
+                                {left >= 0 ? `${money(left)} left` : `${money(left)} over`}
+                              </p>
+                              <span
+                                className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${budgetStyle[s.level].pill}`}
+                              >
+                                <span className={`size-1.5 rounded-full ${budgetStyle[s.level].bar}`} />
+                                {s.badge}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="mt-3">
+                          <ProgressBar value={ratio} level={s.level} />
+                        </div>
+                        </div>
+                      ) : (
                       <SwipeActions
                         id={`budget-${b.category}`}
                         label={`${cat.long} budget, ${money(catSpent)} of ${money(b.limit)}`}
@@ -243,6 +302,7 @@ export default function Budgets() {
                           <ProgressBar value={ratio} level={s.level} />
                         </div>
                       </SwipeActions>
+                      )}
                       {editingCat === b.category && (
                         <div className="border-t border-surface-container px-4 pb-4">
                           <AmountForm
@@ -267,7 +327,7 @@ export default function Budgets() {
             )}
             <ViewAllButton list={list} />
 
-            {adding ? (
+            {isPast ? null : adding ? (
               <AddCategoryBudget
                 options={unbudgeted}
                 canCreate={canCreate}
@@ -291,11 +351,11 @@ export default function Budgets() {
                 </button>
               )
             )}
-            <p className="mt-3 text-center text-sm">
+            {!isPast && <p className="mt-3 text-center text-sm">
               <Link href="/categories" className="font-medium text-primary hover:underline">
                 Manage your categories
               </Link>
-            </p>
+            </p>}
           </section>
         </PageColumns>
 

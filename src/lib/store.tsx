@@ -19,6 +19,7 @@ import type { Loan } from "./loans";
 import type { Transfer, TransferInput } from "./transfers";
 import type { CapturedItem } from "./captureMatch";
 import { activeAlerts, buildAlerts, type Alert } from "./alerts";
+import { monthKey } from "./budgetHistory";
 
 type NewTransaction = Omit<Transaction, "id"> & { receiptName?: string };
 export type CaptureStatus = { exists: boolean; createdAt: string | null; lastUsedAt: string | null };
@@ -37,7 +38,11 @@ type Ctx = {
   update: (id: string, t: NewTransaction) => Promise<void>;
   remove: (id: string) => Promise<void>;
   budget: Budget;
-  saveBudget: (b: Budget) => Promise<void>;
+  /** Replaces the budget. Also recorded as this month's limit, so past months keep the limit they had. */
+  saveBudget: (b: Pick<Budget, "monthlyLimit" | "categories">) => Promise<void>;
+  /** The month Overview and Budgets show ("YYYY-MM", local). Past months are read-only; resets on reload. */
+  viewMonth: string;
+  setViewMonth: (month: string) => void;
   /** The user's own categories, A to Z. */
   customCategories: CustomCategory[];
   /** Label, icon and tone of any category, built-in or custom. */
@@ -153,6 +158,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
   const [user, setUser] = useState<User | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [budget, setBudget] = useState<Budget>(emptyBudget);
+  const [viewMonth, setViewMonth] = useState(() => monthKey(new Date()));
   const [customCategories, setCustomCategories] = useState<CustomCategory[]>([]);
   const [settings, setSettings] = useState<Settings>(emptySettings);
   const [loans, setLoans] = useState<Loan[]>([]);
@@ -261,8 +267,10 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     [dropIfGone],
   );
 
-  const saveBudget = useCallback(async (b: Budget) => {
-    setBudget(await api<Budget>("/api/budget", { method: "PUT", body: JSON.stringify(b) }));
+  const saveBudget = useCallback(async (b: Pick<Budget, "monthlyLimit" | "categories">) => {
+    // The month is the user's local one: the server runs in UTC and would get it wrong around midnight on the 1st.
+    const body = { monthlyLimit: b.monthlyLimit, categories: b.categories, month: monthKey(new Date()) };
+    setBudget(await api<Budget>("/api/budget", { method: "PUT", body: JSON.stringify(body) }));
   }, []);
 
   // ── The user's own categories ──
@@ -458,6 +466,8 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
       remove,
       budget,
       saveBudget,
+      viewMonth,
+      setViewMonth,
       customCategories,
       categoryOf,
       ensureCategory,
@@ -485,7 +495,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
       revokeCaptureToken,
       alerts,
     }),
-    [user, logout, transactions, add, update, remove, budget, saveBudget, customCategories, categoryOf, ensureCategory, renameCategory, deleteCategory, settings, saveSettings, dismissAlerts, saveCard, loans, addLoan, updateLoan, removeLoan, addPayment, removePayment, transfers, addTransfer, updateTransfer, removeTransfer, captured, confirmCaptured, dismissCaptured, getCaptureStatus, createCaptureToken, revokeCaptureToken, alerts],
+    [user, logout, transactions, add, update, remove, budget, saveBudget, viewMonth, customCategories, categoryOf, ensureCategory, renameCategory, deleteCategory, settings, saveSettings, dismissAlerts, saveCard, loans, addLoan, updateLoan, removeLoan, addPayment, removePayment, transfers, addTransfer, updateTransfer, removeTransfer, captured, confirmCaptured, dismissCaptured, getCaptureStatus, createCaptureToken, revokeCaptureToken, alerts],
   );
 
   if (status === "loading" || (status === "ready" && !user) || (status === "ready" && !introDone)) {
