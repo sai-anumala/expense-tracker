@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MAX_AMOUNT } from "../api";
-import { parseTransactionInput } from "../transactionInput";
+import { parseTransactionInput, toTransactionDto } from "../transactionInput";
 
 const NOW = new Date("2026-11-03T06:30:00.000Z"); // 12:00 IST
 beforeEach(() => {
@@ -86,15 +86,30 @@ describe("parseTransactionInput", () => {
     expect(errorOf({ account: "a".repeat(81) })).toBe("Payment method name is too long.");
   });
 
-  it("receiptName is truncated to 200 chars; non-strings ignored", () => {
-    const r = parse({ receiptName: "r".repeat(250) });
-    expect(r.ok && r.value.receiptName).toHaveLength(200);
-    const r2 = parse({ receiptName: 5 });
-    expect(r2.ok && r2.value.receiptName).toBeUndefined();
+  it("a receipt is never part of the body: receiptName and receipt are ignored", () => {
+    const r = parse({ receiptName: "scan.pdf", receipt: { key: "receipts/x" } });
+    expect(r.ok && Object.keys(r.value)).not.toContain("receiptName");
+    expect(r.ok && Object.keys(r.value)).not.toContain("receipt");
   });
 
   it("ignores unknown fields such as the old subcategory", () => {
     const r = parse({ subcategory: "pizza" });
     expect(r.ok && Object.keys(r.value)).not.toContain("subcategory");
+  });
+});
+
+describe("toTransactionDto receipt", () => {
+  const doc = { _id: { toString: () => "abc" }, merchant: "Cafe", category: "food", amount: -10, date: new Date("2026-11-03T05:00:00.000Z") };
+
+  it("has no receipt when there is none (including old name-only documents)", () => {
+    expect(toTransactionDto(doc).receipt).toBeUndefined();
+    expect(toTransactionDto({ ...doc, receipt: null }).receipt).toBeUndefined();
+    expect(toTransactionDto({ ...doc, receiptName: "old.pdf" } as never).receipt).toBeUndefined();
+  });
+  it("sends name, type and size, and never the storage key", () => {
+    const dto = toTransactionDto({ ...doc, receipt: { key: "receipts/secret/path.jpg", name: "bill.jpg", type: "image/jpeg", size: 1234 } } as never);
+    expect(dto.receipt).toEqual({ name: "bill.jpg", type: "image/jpeg", size: 1234 });
+    expect(JSON.stringify(dto)).not.toContain("secret");
+    expect(JSON.stringify(dto)).not.toContain("key");
   });
 });

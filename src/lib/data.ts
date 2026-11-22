@@ -110,6 +110,9 @@ export const paymentMethods = ["UPI", "Cash", "Debit Card", "Credit Card", "Bank
 /** Pre-selected payment method for new transactions. */
 export const DEFAULT_PAYMENT_METHOD = "UPI";
 
+/** A receipt stored for a transaction. The storage key is never sent to the browser. */
+export type Receipt = { name: string; type: string; size: number };
+
 export type Transaction = {
   id: string;
   merchant: string;
@@ -118,6 +121,8 @@ export type Transaction = {
   amount: number;
   date: string; // ISO
   account?: string;
+  /** One photo or PDF; see lib/receipts.ts. Shown with a paperclip and in the View pop-up. */
+  receipt?: Receipt;
 };
 
 import type { CardSettings } from "./creditCard";

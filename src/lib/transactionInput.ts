@@ -8,7 +8,6 @@ export type TransactionInput = {
   amount: number;
   date: Date;
   account?: string;
-  receiptName?: string;
 };
 
 /** Allow a little clock skew between browser and server. */
@@ -37,9 +36,9 @@ export function parseTransactionInput(
 
   const account = typeof body.account === "string" && body.account.trim() ? body.account.trim() : undefined;
   if (account && account.length > 80) return { ok: false, error: "Payment method name is too long." };
-  const receiptName = typeof body.receiptName === "string" && body.receiptName ? body.receiptName.slice(0, 200) : undefined;
 
-  return { ok: true, value: { merchant, category, amount: toPaise(amount), date, account, receiptName } };
+  // A receipt is never part of this body: files are added and removed through /api/transactions/:id/receipt.
+  return { ok: true, value: { merchant, category, amount: toPaise(amount), date, account } };
 }
 
 type Lean = {
@@ -49,6 +48,7 @@ type Lean = {
   amount: number;
   date: Date;
   account?: string | null;
+  receipt?: { name: string; type: string; size: number } | null;
 };
 
 export const toTransactionDto = (d: Lean) => ({
@@ -58,4 +58,6 @@ export const toTransactionDto = (d: Lean) => ({
   amount: d.amount,
   date: new Date(d.date).toISOString(),
   account: d.account ?? undefined,
+  // Name, type and size only. The storage key stays on the server.
+  receipt: d.receipt ? { name: d.receipt.name, type: d.receipt.type, size: d.receipt.size } : undefined,
 });

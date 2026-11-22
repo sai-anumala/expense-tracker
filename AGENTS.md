@@ -59,6 +59,7 @@ There is **no mock or sample data** anywhere: every number comes from the signed
 | DB | **MongoDB Atlas** via **Mongoose 8.x** | DB name `ledgerly` |
 | Auth | Custom: **bcryptjs** (cost 12) + **jose** JWT (HS256) in httpOnly cookie | No third-party auth provider |
 | Hosting | **Vercel** (Hobby), GitHub integration | |
+| File storage | **Vercel Blob**, private store, via `@vercel/blob` **2.9.0** (pinned) | Receipts only. Credentials are short-lived Vercel OIDC, so the app holds no storage secret |
 | Package manager | npm (`package-lock.json`) | |
 | Tests | **Vitest 4.1.12** (pinned exactly), node environment | Unit tests for pure `src/lib` logic only; no UI/E2E tests yet (see [§16](#16-testing--verification)) |
 
@@ -92,7 +93,9 @@ npm run dev                     # http://localhost:3000 → redirects to /login
 | `MONGODB_URI` | yes | `.env.local`, Vercel (Production + Preview, *sensitive*) | Atlas connection string. Password must be URL-encoded if it has special characters |
 | `MONGODB_DB` | no (default `ledgerly`) | same | Database name |
 | `AUTH_SECRET` | yes | same | ≥ 32 random chars to sign session JWTs (`openssl rand -hex 32`). **Local and Vercel use different values.** Changing it logs everyone out |
-| `VERCEL_OIDC_TOKEN` | auto | `.env.local` | Written by `vercel link`; not used by app code |
+| `VERCEL_OIDC_TOKEN` | auto | `.env.local` | Written by `vercel link` / `vercel env pull`. **Used by the Blob SDK** for receipts when running locally. It expires after about 12 hours, so refresh it with `vercel env pull` (see §17) |
+| `BLOB_STORE_ID` | auto | Vercel (Production + Preview + Development) | Set when the private Blob store is connected to the project. Without it (and without `RECEIPTS_LOCAL_DIR`) the receipt routes answer 503 "Receipts aren't set up on this server yet." |
+| `RECEIPTS_LOCAL_DIR` | no | local / scratch only | Store receipts in this folder instead of Blob, for testing without Vercel credentials. **Ignored when `VERCEL` is set**, so it can never be active on Vercel |
 
 Rules:
 - `.env*` is git-ignored except `.env.example` (template without values). **Never commit secrets.**
@@ -121,6 +124,7 @@ git checkout develop
 - GitHub: `sai-anumala/expense-tracker` (private).
 - Vercel: team `sai-anumalas-projects` (`team_xdN7BdWZfR6IECLZQRCcbJjx`), project `expense-tracker` (`prj_q179X7ZAKzr71LP7JcrgS2vgpz4a`). Local link in `.vercel/` (git-ignored).
 - MongoDB Atlas: Network Access allows `0.0.0.0/0` (required: Vercel has no fixed IPs).
+- Receipts live in one **private Vercel Blob store** shared by Preview, local dev and production (they share the database, so a transaction's receipt must be reachable from all of them). Paths are `receipts/<userId>/<transactionId>/<random>.<ext>`.
 - ⚠️ **Preview, local dev and production all share the same database (`ledgerly`).** Testing on `develop` touches real users' data. (A separate `ledgerly_dev` DB was offered and declined.)
 - Vercel CLI: use `npx vercel …` (not installed globally). Logs: `npx vercel logs --deployment <url> --query 'level:error'` (Hobby keeps about 30 min).
 - Design source: Google Stitch project `7559211481556998549` ("Clean Expense Tracker"); screenshots and `DESIGN.md` copied to `design/`.
@@ -195,7 +199,8 @@ src/
 │     ├─ auth/signup|login|logout|me/route.ts  (login + signup are rate-limited)
 │     ├─ auth/password/route.ts  POST change password (session required, rate-limited)
 │     ├─ transactions/route.ts   GET list, POST create
-│     ├─ transactions/[id]/route.ts  PUT update, DELETE
+│     ├─ transactions/[id]/route.ts  PUT update, DELETE (also deletes the receipt file)
+│     ├─ transactions/[id]/receipt/route.ts  GET the file (owner only), POST add/replace (multipart `file`), DELETE remove
 │     ├─ budget/route.ts         GET, PUT (replace whole budget)
 │     ├─ settings/route.ts       GET, PUT (balance + unpaid card amount; re-anchors)
 │     ├─ settings/card/route.ts  PUT card setup `{statementDay, dueDay, limit?}` or `{card: null}` (no re-anchor)
@@ -209,6 +214,7 @@ src/
 ├─ components/
 │  ├─ ui.tsx                     AppHeader (logo, NotificationBell, UserMenu; + OverviewAlertBanner below the header on "/"), SubHeader, PageColumns, RowHint, Logo, IconTile, ProgressBar, SectionTitle
 │  ├─ MonthPicker.tsx            The month pill on Overview and Budgets: tap for the months that have data; the choice (`viewMonth`) is shared by both screens
+│  ├─ ReceiptPicker.tsx          Receipt field on Add/Edit (attach, change, remove, undo) and `ReceiptView` for the View pop-up; `receiptUrl()`
 │  ├─ ViewAll.tsx                useViewAll + ViewAllButton: lists show LIST_LIMIT (5), then View all / Show less
 │  ├─ Pagination.tsx             Previous / Page N of M / Next (All Transactions)
 │  ├─ DateRangePicker.tsx        DateRangeField + DateRangeDialog: custom date range calendar
@@ -234,6 +240,10 @@ src/
 │  ├─ store.tsx      (client)    TransactionsProvider, useAppData, api() fetch helper, ApiError, errorMessage()
 │  ├─ data.ts                    Categories (+ primaryCategories / moreCategories), paymentMethods + DEFAULT_PAYMENT_METHOD, types, empty defaults
 │  ├─ insights.ts                Pure calc helpers: periodBounds, within, totals, spentByCategory, topMerchants, weeklySpend, categoryInsight, anchoredBalance
+│  ├─ receipts.ts                (shared, pure) limits (`MAX_RECEIPT_BYTES` 4 MB, `MAX_RECEIPTS_PER_USER` 300), allowed types, `formatBytes`, `fitWithin`
+│  ├─ receiptInput.ts (server)   Validate an upload by its first bytes (JPEG/PNG/WebP/PDF only), `cleanFileName`, `receiptKey`, `inlineDisposition`
+│  ├─ receiptStorage.ts (server) `saveReceipt` / `readReceipt` / `deleteReceipt` over private Vercel Blob, or a local folder when `RECEIPTS_LOCAL_DIR` is set (never on Vercel)
+│  ├─ receiptImage.ts (client)   `prepareReceipt`: shrink a photo to a JPEG (longest side 1600 px) under 4 MB; PDFs checked for size
 │  ├─ budgetHistory.ts           (shared, pure) month keys (`monthKey`, `monthBounds`), `budgetForMonth` (which limit a month is measured against), `upsertHistory`, `monthSummaries` (the picker list), `HISTORY_CAP`
 │  ├─ budgetInput.ts (server)    parseBudgetMonth: the `month` sent with a budget save
 │  ├─ alerts.ts                  (pure) buildAlerts → sorted reminders (card bill/usage, loans, budgets); thresholds as constants; isAttention
@@ -298,7 +308,8 @@ All schemas use `timestamps: true` and `strict: "throw"` (unknown fields throw �
 | `amount` | Number | **expense < 0, income > 0**, never 0, \|x\| ≤ 1e10, rounded to paise |
 | `date` | Date | indexed; not in the future (5 min tolerance) |
 | `account` | String | optional payment method, ≤ 80 (`UPI` (default), `Cash, Debit Card, Credit Card, Bank Transfer`) |
-| `receiptName` | String | optional file name only (files are **not** uploaded) |
+| `receipt` | `{key, name, type, size}`? | One uploaded receipt. `key` = path in the private Blob store (`receipts/<userId>/<transactionId>/<random>.<ext>`), **never sent to the browser**; `name` ≤ 200; `type` one of `image/jpeg, image/png, image/webp, application/pdf`; `size` in bytes (≤ 4 MB). Written only by the receipt routes |
+| `receiptName` | String | **Legacy.** Older versions stored only a file name (no file). Never written now; old documents keep it and show no receipt |
 
 **`customcategories`** (`CustomCategory`): a user's own categories
 | Field | Type | Rules |
@@ -403,9 +414,12 @@ All bodies are JSON objects; non-object or invalid JSON → **400**. Mongoose `V
 | `GET /api/auth/me` | session | – | `{id,name,email}` (re-read from DB) | 401 (and cookie cleared if user deleted) |
 | `POST /api/auth/password` | session | `{currentPassword, newPassword}` | 200 `{changed: true}` | 400 "Current password is incorrect." / "New password must be at least 8 characters." / "New password must be different."; 401; **429** "Too many wrong password attempts…" + `Retry-After` |
 | `GET /api/transactions` | session | – | `Transaction[]` newest first (max 1000) | – |
-| `POST /api/transactions` | session | `{merchant, category, amount, date(ISO), account?, receiptName?}` | 201 `Transaction` | 400 with specific reason |
+| `POST /api/transactions` | session | `{merchant, category, amount, date(ISO), account?}` | 201 `Transaction` | 400 with specific reason |
 | `PUT /api/transactions/:id` | session | same as POST | 200 `Transaction` | 404 if not found **or not owned** (same message) |
-| `DELETE /api/transactions/:id` | session | – | 200 `{id}` | 404 not found / not owned |
+| `DELETE /api/transactions/:id` | session | – | 200 `{id}`; its receipt file is deleted too (if storage fails the transaction is still deleted) | 404 not found / not owned |
+| `POST /api/transactions/:id/receipt` | session | `multipart/form-data`, field `file` (one photo or PDF, ≤ 4 MB) | 200 updated `Transaction` (with `receipt: {name,type,size}`); a previous receipt is replaced and its file deleted | 400 no/empty file; 404 not found **or not owned**; **409** 300 receipts reached; **413** over 4 MB; **415** not JPEG/PNG/WebP/PDF (checked by the file's first bytes, not its name); **429** over 30 uploads/hour + `Retry-After`; **502** storage unreachable; **503** storage not set up |
+| `GET /api/transactions/:id/receipt` | session | – | 200 the file, `Content-Type` = stored type, `Content-Disposition: inline`, `Cache-Control: private, no-store` | 404 not found / not owned / no receipt / file missing; 503 |
+| `DELETE /api/transactions/:id/receipt` | session | – | 200 `Transaction` without a receipt; the file is deleted | 404; 503 |
 | `GET /api/budget` | session | – | `{monthlyLimit, categories[], history[]}` (defaults if none) | – |
 | `PUT /api/budget` | session | full budget (replaces): `{monthlyLimit, categories[], month?}`. `month` = the user's local `YYYY-MM`; with it the saved budget is also stored as that month's `history` entry | 200 budget (with `history`) | 400 limits/duplicates; 400 "Month must look like 2026-11." / "Month must be the current month." (only the server's UTC month ±1 is accepted, which covers every time zone) |
 | `GET /api/settings` | session | – | `{openingBalance, balanceAsOf, cardDueAtAnchor, card, dismissedAlerts}` (ISO / null / empty defaults) | – |
@@ -443,7 +457,7 @@ All bodies are JSON objects; non-object or invalid JSON → **400**. Mongoose `V
 
 `Transfer` DTO: `{ id, from, to, amount, date, note? }`. Validation in `lib/transferInput.ts`.
 
-`Transaction` DTO: `{ id, merchant, category, amount, date, account? }`. Unknown body fields (e.g. an old `subcategory`) are ignored.
+`Transaction` DTO: `{ id, merchant, category, amount, date, account?, receipt?: { name, type, size } }` (no storage key). Unknown body fields (e.g. an old `subcategory`) are ignored.
 Validation lives in `lib/transactionInput.ts` (transactions), `lib/authInput.ts` (auth), `lib/settingsInput.ts` (settings + card), and inline in the budget route. **Server validation is authoritative**; client checks are UX only.
 
 ---
@@ -468,6 +482,7 @@ Validation lives in `lib/transactionInput.ts` (transactions), `lib/authInput.ts`
   | `POST /api/auth/login` | `login:<email>` | 5 / 15 min | **failures only**; the 6th attempt is refused even with the right password; cleared on successful login |
   | `POST /api/auth/signup` | `signup-ip:<ip>` | 10 / hour | every attempt that passes validation |
   | `POST /api/auth/password` | `pwchange:<userId>` | 5 / 15 min | wrong current password only; cleared on success |
+  | `POST /api/transactions/:id/receipt` | `receipt:<userId>` | 30 / hour | every upload that gets past the size pre-check |
   - Blocked → **429** `"Too many … Try again in N minutes."` with `Retry-After` (seconds). `AuthForm` and the change-password dialog show the server message inline.
   - Keys are **SHA-256 hashes** (`node:crypto`) of `<kind>:<value>`: no raw emails or IPs are stored. Client IP = first `x-forwarded-for` entry (Vercel sets it), else `x-real-ip`, else `"unknown"`.
   - **Fails open:** if a rate-limit step errors or takes over 3 s it logs `rateLimit.* failed` / `timed out` and allows the request; DB errors in the main operation keep the normal `dbErrorResponse` handling.
@@ -602,12 +617,14 @@ Gmail only: no SMS and no inbound email service. A Google Apps Script in the use
 
 ## 12. Screens & UX behaviour
 
-- **Add / Edit** (`/add`, `/add?id=…`, `/add?kind=income`): Expense/Income tabs (no Transfer), amount with +₹100/+₹500/+₹1,000 chips (2-decimal max), category grid (expense only), DateTimePicker, payment method select (**defaults to UPI**), note/merchant (≤ 120), receipt file **name only**.
+- **Add / Edit** (`/add`, `/add?id=…`, `/add?kind=income`): Expense/Income tabs (no Transfer), amount with +₹100/+₹500/+₹1,000 chips (2-decimal max), category grid (expense only), DateTimePicker, payment method select (**defaults to UPI**), note/merchant (≤ 120), and an optional **receipt** (`ReceiptPicker`): one photo or PDF up to 4 MB.
+  - **Receipt:** "Attach receipt or invoice" opens the file picker. A photo is shrunk in the browser (longest side 1600 px, saved as JPEG, quality lowered until under 4 MB; transparent PNGs get a white background); a PDF over 4 MB is refused with a message. The chosen file shows with a thumbnail, its size and Change / Remove. Nothing is uploaded until the transaction is saved: **the transaction is saved first, then the file is uploaded**. If the upload fails the transaction is **already saved**; the screen moves to Edit (`/add?id=…`) and shows "Saved, but the receipt didn't go through: …" so it can be retried with Save changes. On Edit the saved receipt shows with Replace and Remove (Remove can be undone before saving). Deleting a transaction deletes its receipt; the confirm says so.
   - Category grid (4 columns): first shows `primaryCategories` (Food, Groceries, Transport, Shopping, Fun & Subs, Bills, Health) + a dashed **Show more** tile. Show more expands the same grid with `moreCategories` (Sending home, Fuel, Sent to friend, Rent, Education, Gifts, Personal care, **Other**) and the tile becomes **Show less**. Opens expanded when editing a transaction whose category is in `moreCategories`. Choosing **Other** opens an optional "Name this category" box (`CategoryPicker`): a name creates the user's own category when the form is saved (never for an abandoned form); blank saves as plain Other. A name matching a built-in or existing category reuses it, and the box says so. The user's own tiles sit under Show more, before Other.
   - New → saves immediately. **Edit → "Save changes?" confirm (Yes/Cancel). Delete → danger confirm.** On success → `/`.
   - Unknown/foreign id → "Transaction not found" screen.
   - Payment method **Credit Card** shows an info notice (expense: "counts as spending now, but your available balance changes only when you pay the card bill"; income: refund lowers what you owe) and never shows the low-balance warning.
 - **DateTimePicker:** field shows "Today, 2:45 PM" / "Yesterday, …" / "Fri, 24 Oct, …"; tapping opens a **compact centered pop-up** (max 20rem wide, 1rem margin on phones) with preview, Now/Yesterday/2 days ago, Monday-first calendar, hour/minute/AM-PM; future days and times disabled; Done/Cancel; Esc or backdrop tap closes.
+- **Receipt on rows and in View:** a transaction with a receipt shows a small paperclip next to its name (`aria-label` "Has a receipt") everywhere `TransactionRow` is used. The View pop-up has a Receipt section: the photo (tap to open full size in a new tab) or, for a PDF, a file chip with **Open** (a new tab; PDFs aren't embedded because `frame-ancestors` is `none`). Files are always fetched from the owner-only route, never a public link.
 - **Transaction rows** (Overview recent list, All Transactions; built on `SwipeActions`): **swipe left** (touch or mouse drag) or **tap / Enter** to reveal three actions: **View** (read-only details pop-up with an Edit button), **Edit** (`/add?id=…`), **Delete** (confirm dialog, "Yes, delete"). Only one row is open at a time (window event `ledgerly:row-open`); vertical scrolling stays native (`touch-action: pan-y`). Rows no longer navigate on tap.
 - **Monthly Budget card:** app font with tabular digits; the spent/cap row and the "Daily safe pace" row wrap on narrow phones, with "N days left" in its own pill so they never collide.
 - **Month pill** (`MonthPicker`, Overview, Budgets and Analytics; on phones the pill and the "This month" button use `px-3` below 360px so they stay on one row, and wrap cleanly at 320px with the longest month names): tap to open a "Choose a month" dialog (Esc, backdrop tap or Close dismisses; the chosen month is checked). Choosing a past month shows "Viewing <month>… Back to <current month>" under the pill; see §11 "Viewing a past month".
@@ -680,6 +697,7 @@ Tokens are defined in `src/app/globals.css` under `@theme` and used as Tailwind 
 3a. **Loans are not transactions.** Never count loan money as income or spending; it only affects the balance via `loanCashEvents`. "Sending home" stays an expense category (planned monthly outflow).
 3b. **Transfers are not transactions.** Money moved between the user's own accounts is never income or spending; keep transfers out of tiles, budgets, analytics/CSV, the All Transactions Spent/Received summary and day-net headers. The **only** balance effect is the card model: X → card −amount, card → X +amount (`availableCashEvents`/`transferCashEffect`); Bank/UPI/Cash moves are neutral.
 3c. **Card purchases are spending but not cash.** Expenses with account "Credit Card" (`CARD_ACCOUNT`) count in Spent/budgets/analytics but never in Total Available Balance. Always compute the balance with `availableCashEvents(transactions, transfers, loans)`, never `[...transactions, ...]` directly.
+3d. **Receipts are private, per-user files.** Never expose a storage `key` or a direct Blob URL; serve files only through `GET /api/transactions/:id/receipt` (session + `userId` check, same 404 for "not yours"). Decide a file's type from its first bytes, never from the browser's type or the name, and never allow SVG/HTML.
 4. **API responses** use `ok()` / `fail()` / `dbErrorResponse()` from `lib/api.ts`; validate with explicit, human-readable messages; wrap DB calls in try/catch.
 5. **Amounts:** sign encodes type (expense < 0); round with `toPaise`; display with `money()`/`signedMoney()`/`moneySigned()` (balances)/`moneyWhole()` (INR, `en-IN`). Never hardcode `₹` or `$`; use `CURRENCY_SYMBOL`.
 6. **Destructive or modifying actions on existing records require a confirm dialog** (`ConfirmDialog`).
@@ -717,7 +735,7 @@ Also bump "Last updated" at the top. Keep entries factual and short; link to fil
 ### Unit tests (Vitest)
 - Run: `npm test` (single run, as in CI) or `npm run test:watch`. Takes about a second; no network, no database.
 - Location: `src/lib/__tests__/<module>.test.ts` (one file per module in `src/lib`). Shared builders (`tx`, `loan`, `payment`, `local`, `iso`) live in `src/lib/__tests__/fixtures.ts`.
-- Covered: `insights` (period bounds, totals, `anchoredBalance`, `budgetLevel`), `budgetHistory` (month keys, `budgetForMonth`, history upsert/cap, picker list), `budgetInput` (the `month` check), `loans`, `balance`, `csv`, `loanExport`, `creditCard`, `transfers`, `bankAlertParser`, `captureMatch`, `gmailScript`, `alerts`, `theme` (incl. running the head script against a fake document), `deadline`, `categories`, `transactionFilters`, `safeNext`, `rateLimit` (time limits and blocking, with the database mocked), and the server validators `transactionInput`, `loanInput`, `authInput`, `transferInput`, `settingsInput`. Not covered: React components, API routes, Mongoose models.
+- Covered: `insights` (period bounds, totals, `anchoredBalance`, `budgetLevel`), `budgetHistory` (month keys, `budgetForMonth`, history upsert/cap, picker list), `budgetInput` (the `month` check), `loans`, `balance`, `csv`, `loanExport`, `creditCard`, `transfers`, `bankAlertParser`, `captureMatch`, `gmailScript`, `alerts`, `theme` (incl. running the head script against a fake document), `deadline`, `categories`, `transactionFilters`, `safeNext`, `receiptInput` (+ `receipts`: magic-byte checks, size limit, file names, key pattern), `rateLimit` (time limits and blocking, with the database mocked), and the server validators `transactionInput`, `loanInput`, `authInput`, `transferInput`, `settingsInput`. Not covered: React components, API routes, Mongoose models.
 - Config: `vitest.config.mts`: `@/*` → `src/*` alias, `environment: "node"`, `server-only` aliased to the empty `test/server-only-stub.ts` (so server validators import cleanly). `test/setup.ts` deletes `MONGODB_URI` and restores real timers after each test.
 - **Time zone is pinned to `Asia/Kolkata`** (set in the config and the setup file), so local-date maths gives the same results on any machine. Use `local()`/`iso()` from fixtures for dates and `vi.useFakeTimers()` + `vi.setSystemTime()` wherever "now" matters.
 - Convention: a known bug can be pinned with `it.fails` (listed in §19); when it's fixed the test starts failing, so switch it to `it`. (The first one, `slug()` splitting Devanagari/accented names, was fixed on 2026-11-03.)
@@ -739,7 +757,7 @@ curl -s -c jar -X POST $B/api/auth/login -H "$J" -d '{"email":"…","password":"
 curl -s -b jar $B/api/transactions
 ```
 
-For isolated tests use a **temporary local MongoDB** (`mongod --dbpath <tmp> --port 27999`) and run a scratch build with `MONGODB_URI=mongodb://127.0.0.1:27999 MONGODB_DB=test AUTH_SECRET=$(openssl rand -hex 32) npx next start -p 3125`. Previously verified this way: redirects, signup validation, duplicate email, cross-user isolation (404s), wrong-password parity, logout, forged cookie, bcrypt storage.
+For receipts without Vercel credentials, start the scratch server with `RECEIPTS_LOCAL_DIR=<tmp folder>` (files are written there; ignored on Vercel). For isolated tests use a **temporary local MongoDB** (`mongod --dbpath <tmp> --port 27999`) and run a scratch build with `MONGODB_URI=mongodb://127.0.0.1:27999 MONGODB_DB=test AUTH_SECRET=$(openssl rand -hex 32) npx next start -p 3125`. Previously verified this way: redirects, signup validation, duplicate email, cross-user isolation (404s), wrong-password parity, logout, forged cookie, bcrypt storage.
 
 ---
 
@@ -766,6 +784,8 @@ For isolated tests use a **temporary local MongoDB** (`mongod --dbpath <tmp> --p
 | `capture.email timed out` / `capture.email slow` in the logs | `/api/capture/email` gives up after 25 s with a 503 (it once hung to Vercel's 300 s limit; see the row above) and the script retries on its next run. The log lists each step reached with its timing, so the last step shows where it stuck. A retry after a late save is caught by the unique `dedupeKey` |
 | A bank alert never appears in To review | Check the sender is in `BANK_SENDERS`, then the script's Executions log in script.google.com. A 200 with `captured: false` means the parser ignored it (see `reason`); unrecognised bank wording needs a rule in `lib/bankAlertParser.ts`, tested with made-up details only |
 | `Cannot read properties of undefined (reading 'createCollection')` after adding a model | Don't call `Model.init()` for new models in routes: it can stay failed if it started before the connection opened. Use `ensureIndexes()` from `lib/db.ts` after `connectDb()` |
+| "Receipts aren't set up on this server yet." (503) when attaching | No Blob store is connected: `BLOB_STORE_ID` is missing. Create a private store and connect it to the project for Production, Preview and Development (§4/§5). The transaction itself still saves; only the receipt fails |
+| Receipts fail locally with a Blob auth error | `VERCEL_OIDC_TOKEN` in `.env.local` has expired (about 12 h). Run `vercel env pull .env.local --yes`, then restart `npm run dev` |
 | A transaction doesn't change the Total Available Balance | Its date is earlier than when the balance was entered (`balanceAsOf`); by design. Re-enter the balance via ✎ if needed. Card purchases (paid with "Credit Card") never change it; paying the bill does |
 | Existing user's balance jumped after the credit card release | Card purchases since `balanceAsOf` stopped reducing it, and card bill transfers started reducing it. Expected until they re-enter the balance with the unpaid card amount (the Overview shows a one-time "Update balance" prompt while `cardDueAtAnchor` is null) |
 
@@ -819,6 +839,7 @@ For isolated tests use a **temporary local MongoDB** (`mongod --dbpath <tmp> --p
 | 2026-11-07 | Re-render fixes: memoized context value, reminders built once in the provider, no-op review refresh skipped, `useMemo` for balance and Analytics derivations. Stayed on React Context (no Redux) | A code review (not profiled) found avoidable re-renders; at ≤ 1000 items Context is enough. If paging/caching is needed later, TanStack Query fits better than Redux because the state is server data |
 | 2026-11-11 | Every colour moved onto tokens: transfer blue, coin, chart palette and on-colour text; unused per-category colours removed; `lib/themeColors.ts` for the two CSS-less spots | User request: change a colour in one place |
 | 2026-11-22 | **One four-level budget colour scale**: green ≤ 60%, yellow 61-80%, orange 81-100%, red over 100% (solid red pill), used for every budget figure; replaces the 30%-left, 80%, 85% and 90% points and the "N% left" line | User request. Four different amber points made the same budget look different on each element, and over budget was never red outside the Remaining figure. The 90% bell reminder (`BUDGET_WARN`) is unchanged |
+| 2026-11-22 | **Receipt upload**: one photo or PDF (≤ 4 MB) per transaction in a **private Vercel Blob** store, served only through an owner-checked route; paperclip on rows and a Receipt section in View; transaction saved first, then the file | User request ("build it properly"). Blob rather than Cloudinary: receipts are private financial documents (no public URLs), no extra vendor or secret, short-lived OIDC credentials, PDFs work without extra setup. 4 MB because Vercel rejects request bodies over 4.5 MB, so photos are shrunk in the browser. Type is decided from the file's bytes so SVG/HTML can't be stored |
 | 2026-11-22 | **Month picker with budget history**: past months are viewable (read-only) on Overview and Budgets, measured against the limit saved in that month. Each budget save also writes a per-month entry in `budgets.history` (client sends its local month, server accepts UTC month ±1), capped at 36 | User request (look back at last month; limit "from that month"). Server runs in UTC, so the client supplies the month. Shared month in the provider so both screens agree. Balance, card and reminders stay "today" because they are not monthly figures |
 | 2026-11-11 | **Dark mode**: dark values for every token under `data-theme="dark"`; default light; Light / Dark / Device in the account menu; cookie + inline head script | User request. Cookie rather than localStorage (no app state in browser storage) and not on the account (a per-device display choice); the head script avoids a light flash before React loads |
 | 2026-11-03 | **In-app reminders**: bell panel + Overview banner computed from loaded data (`lib/alerts.ts`); no persistence of read/unread or dismissals (badge = current urgent + warning count). Banner rendered from `AppHeader` on `/` so the Overview page needn't change | Agreed card spec; no DB/storage needed, nothing to go stale. Push/email out of scope |
@@ -833,8 +854,8 @@ For isolated tests use a **temporary local MongoDB** (`mongod --dbpath <tmp> --p
 - No UI or end-to-end tests yet (unit tests cover `src/lib` only; consider Playwright for flows). API routes (incl. rate limiting) are verified manually against a temporary MongoDB, not by automated tests.
 - Month picker: history starts from its release, so earlier months show the earliest saved limit (noted on screen); no per-month budget editing and no future months. The "+x% this mo" badge, balance, Credit Card tile and loan totals stay "today" for past months.
 - Reminders are in-app only: no push/email notifications; no read/unread state (reminders can be removed, see §11).
-- Receipts: only the file name is stored; no upload or storage.
-- Remaining `npm audit` item: PostCSS inside Next (build-time only; fixed only in Next 16).
+- Receipts: one per transaction, photo or PDF up to 4 MB; no OCR, no multiple files, no gallery. If storage is down while a transaction is deleted, the file is left behind (orphaned; logged). Older "name only" receipts have no file and show nothing.
+- Remaining `npm audit` items: PostCSS and Next advisories (build-time / features not used; PostCSS inside Next is fixed only in Next 16), and `@vercel/blob` → `@vercel/oidc` → `@vercel/cli-config` → `zod` 4.1.11 (high: memory use on oversized validated input). `zod` there only parses the Vercel CLI's own config file, so no user input reaches it; an npm `overrides` entry could force a newer zod if it ever matters.
 - Transactions list capped at 1000 per user: All Transactions pages and filters only what is loaded, so the oldest are out of reach beyond that.
 - Shared DB across preview/dev/prod (see §5).
 - No account deletion or profile edit UI.

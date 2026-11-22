@@ -82,7 +82,15 @@ Every expense and income is one transaction: an amount, a category, a date and t
 
 **Warnings, never blocks.** If an expense is larger than your available balance, an amber note shows under the amount. You can still save, because real life allows overdrafts. Credit card expenses never show this warning.
 
-The receipt field keeps the file's name only; the file itself is not uploaded.
+**Receipts.** On Add or Edit, **Attach receipt or invoice** lets you add one photo or PDF to a transaction (up to 4 MB).
+
+- Photos are shrunk on your device before they upload, so a large phone photo is fine. A PDF over 4 MB is refused with a message.
+- The file is uploaded when you save. If the transaction saves but the receipt doesn't upload, your transaction is safe: you stay on Edit with a message, and can try again with **Save changes**.
+- A transaction with a receipt shows a small **paperclip** next to its name. Tap it, choose **View**, and you will see the photo (tap it to open it full size) or an **Open** button for a PDF.
+- On Edit you can **Replace** or **Remove** the receipt (before saving you can still **Undo** a removal). Deleting a transaction deletes its receipt too.
+- Receipts are private to your account. Nobody else can open them, even with the address.
+
+![A saved receipt in the View pop-up](screenshots/receipt-view.png)
 
 ---
 
@@ -401,7 +409,7 @@ Auto-capture turns bank alert emails in your Gmail into suggested transactions. 
 - One credit card per account; no EMI, interest or minimum-due maths yet.
 - One total balance: Bank, UPI and Cash aren't tracked separately.
 - Only the latest 1,000 transactions and 1,000 transfers are loaded.
-- Receipts: only the file name is saved.
+- Receipts: one photo or PDF per transaction, up to 4 MB. No text reading from receipts, and no more than one file per transaction.
 - No password reset by email yet, and no account deletion screen.
 - The month picker shows earlier months (Overview, Budgets, Analytics and the Transfer summary), read-only. Limits are only remembered from the release of that feature onward, and the balance, Credit Card tile, loan totals and the "+x% this mo" badge always show today.
 

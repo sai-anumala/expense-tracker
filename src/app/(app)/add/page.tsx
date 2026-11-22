@@ -8,13 +8,13 @@ import {
   CreditCard,
   ChevronDown,
   NotebookPen,
-  ImagePlus,
   CircleCheck,
   Trash2,
 } from "lucide-react";
 import { SubHeader } from "@/components/ui";
 import { CategoryPicker, namedCategory } from "@/components/CategoryPicker";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { ReceiptPicker } from "@/components/ReceiptPicker";
 import { DateTimePicker } from "@/components/DateTimePicker";
 import {
   DEFAULT_PAYMENT_METHOD,
@@ -22,6 +22,7 @@ import {
   type CategoryId,
 } from "@/lib/data";
 import { errorMessage, useAppData } from "@/lib/store";
+import { prepareReceipt } from "@/lib/receiptImage";
 import { availableBalance, shortfall } from "@/lib/balance";
 import { CARD_ACCOUNT, expenseCashOutflow } from "@/lib/creditCard";
 import { BalanceNotice, ShortfallText } from "@/components/BalanceNotice";
@@ -45,7 +46,8 @@ export default function AddPage() {
 function AddTransaction() {
   const router = useRouter();
   const params = useSearchParams();
-  const { add, update, remove, transactions, transfers, loans, settings, categoryOf, ensureCategory } = useAppData();
+  const { add, update, remove, uploadReceipt, removeReceipt, transactions, transfers, loans, settings, categoryOf, ensureCategory } =
+    useAppData();
 
   // ?id=… → edit an existing transaction; otherwise add a new one.
   const editId = params.get("id");
@@ -63,7 +65,11 @@ function AddTransaction() {
   const [account, setAccount] = useState(existing?.account ?? DEFAULT_PAYMENT_METHOD);
   const [newName, setNewName] = useState(""); // names a new category while Other is selected
   const [note, setNote] = useState(existing?.merchant ?? "");
-  const [receipt, setReceipt] = useState<string | null>(null);
+  // Receipt: a newly chosen (already shrunk) file, or the wish to drop the saved one. Applied after the transaction is saved.
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [dropReceipt, setDropReceipt] = useState(false);
+  const [preparing, setPreparing] = useState(false);
+  const [receiptError, setReceiptError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<"save" | "delete" | null>(null);
@@ -93,26 +99,55 @@ function AddTransaction() {
     amount: kind === "income" ? value : -value,
     date: when.toISOString(),
     account,
-    receiptName: receipt ?? undefined,
   });
 
-  async function run(action: () => Promise<void>, failMsg: string) {
+  async function pickReceipt(file: File | undefined) {
+    setReceiptError(null);
+    if (!file) return;
+    setPreparing(true);
+    try {
+      setReceiptFile(await prepareReceipt(file));
+      setDropReceipt(false);
+    } catch (e) {
+      setReceiptError(errorMessage(e, "Couldn't use that file."));
+    } finally {
+      setPreparing(false);
+    }
+  }
+
+  /** `action` saves the transaction and returns its id (nothing for a delete). The receipt is handled after that. */
+  async function run(action: () => Promise<string | void>, failMsg: string) {
     setSaving(true);
     setError(null);
+    let id: string | void;
     try {
-      await action();
-      router.push("/");
+      id = await action();
     } catch (e) {
       setError(errorMessage(e, failMsg));
       setSaving(false);
       setConfirm(null);
+      return;
     }
+    if (id && (receiptFile || (dropReceipt && existing?.receipt))) {
+      try {
+        if (receiptFile) await uploadReceipt(id, receiptFile);
+        else await removeReceipt(id);
+      } catch (e) {
+        // The transaction itself is saved. Stay here (as an edit) so the receipt can be tried again.
+        setError(`Saved, but the receipt didn't go through: ${errorMessage(e, "please try again.")} You can try again with Save changes.`);
+        setSaving(false);
+        setConfirm(null);
+        if (!isEdit) router.replace(`/add?id=${id}`);
+        return;
+      }
+    }
+    router.push("/");
   }
 
   function onSaveClick() {
     if (value <= 0 || tooLarge || saving) return;
     if (isEdit) setConfirm("save"); // edits need a "Yes" confirmation
-    else run(async () => add(await payload()), "Could not save transaction.");
+    else run(async () => (await add(await payload())).id, "Could not save transaction.");
   }
 
   // While saving/deleting, the item may vanish from the list just before we navigate away.
@@ -237,16 +272,19 @@ function AddTransaction() {
               className="w-full bg-transparent text-lg outline-none placeholder:text-outline"
             />
           </Field>
-          <label className="flex cursor-pointer items-center justify-center gap-3 rounded-lg bg-surface-container-low py-4 text-lg">
-            <ImagePlus className="size-5 text-primary" aria-hidden />
-            <span className="truncate">{receipt ?? "Attach Receipt or Invoice"}</span>
-            <input
-              type="file"
-              accept="image/*,application/pdf"
-              className="sr-only"
-              onChange={(e) => setReceipt(e.target.files?.[0]?.name ?? null)}
-            />
-          </label>
+          <ReceiptPicker
+            transactionId={existing?.id}
+            existing={existing?.receipt}
+            file={receiptFile}
+            removed={dropReceipt}
+            preparing={preparing}
+            error={receiptError}
+            disabled={saving}
+            onPick={pickReceipt}
+            onClear={() => setReceiptFile(null)}
+            onRemoveExisting={() => setDropReceipt(true)}
+            onUndoRemove={() => setDropReceipt(false)}
+          />
         </section>
 
         {error && (
@@ -256,7 +294,7 @@ function AddTransaction() {
         )}
         <button
           onClick={onSaveClick}
-          disabled={value <= 0 || tooLarge || saving}
+          disabled={value <= 0 || tooLarge || saving || preparing}
           className="flex w-full items-center gap-3 rounded-xl bg-primary px-6 py-5 text-on-primary shadow-lg shadow-primary/25 transition hover:bg-primary-container disabled:opacity-50"
         >
           <CircleCheck className="size-6" aria-hidden />
@@ -291,12 +329,18 @@ function AddTransaction() {
           }
           busy={saving}
           onCancel={() => setConfirm(null)}
-          onConfirm={() => editId && run(async () => update(editId, await payload()), "Could not update transaction.")}
+          onConfirm={() =>
+            editId &&
+            run(async () => {
+              await update(editId, await payload());
+              return editId;
+            }, "Could not update transaction.")
+          }
         />
         <ConfirmDialog
           open={confirm === "delete"}
           title="Delete this transaction?"
-          message="This permanently removes it from your records and updates your balance. This can't be undone."
+          message={`This permanently removes it from your records and updates your balance.${existing?.receipt ? " Its receipt is deleted too." : ""} This can't be undone.`}
           danger
           busy={saving}
           onCancel={() => setConfirm(null)}

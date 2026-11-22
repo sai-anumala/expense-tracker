@@ -34,9 +34,13 @@ type Ctx = {
   logout: () => Promise<void>;
   /** All transactions from MongoDB, newest first. */
   transactions: Transaction[];
-  add: (t: NewTransaction) => Promise<void>;
+  /** Saves the transaction and returns it (with its id), so a receipt can be attached right after. */
+  add: (t: NewTransaction) => Promise<Transaction>;
   update: (id: string, t: NewTransaction) => Promise<void>;
   remove: (id: string) => Promise<void>;
+  /** Adds or replaces the transaction's receipt (a photo or PDF, up to 4 MB). */
+  uploadReceipt: (id: string, file: File) => Promise<void>;
+  removeReceipt: (id: string) => Promise<void>;
   budget: Budget;
   /** Replaces the budget. Also recorded as this month's limit, so past months keep the limit they had. */
   saveBudget: (b: Pick<Budget, "monthlyLimit" | "categories">) => Promise<void>;
@@ -98,6 +102,8 @@ export class ApiError extends Error {
 }
 
 const TIMEOUT_MS = 15_000;
+/** A receipt of a few MB needs longer than a JSON call on a slow phone connection. */
+const UPLOAD_TIMEOUT_MS = 60_000;
 
 function fallbackMessage(status: number) {
   if (status === 404) return "Not found.";
@@ -109,16 +115,17 @@ function fallbackMessage(status: number) {
 }
 
 /** fetch wrapper: JSON in/out, timeout, and readable errors for every failure mode. */
-export async function api<T>(url: string, init?: RequestInit): Promise<T> {
+export async function api<T>(url: string, init?: RequestInit, timeoutMs = TIMEOUT_MS): Promise<T> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   let res: Response;
   try {
     res = await fetch(url, {
       cache: "no-store",
       ...init,
       signal: controller.signal,
-      headers: init?.body ? { "Content-Type": "application/json" } : undefined,
+      // A file upload (FormData) sets its own multipart header with the boundary.
+      headers: init?.body && !(init.body instanceof FormData) ? { "Content-Type": "application/json" } : undefined,
     });
   } catch (e) {
     if ((e as Error).name === "AbortError")
@@ -230,6 +237,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
   const add = useCallback(async (t: NewTransaction) => {
     const saved = await api<Transaction>("/api/transactions", { method: "POST", body: JSON.stringify(t) });
     setTransactions((prev) => [saved, ...prev].sort(byDateDesc));
+    return saved;
   }, []);
 
   // If the server says the transaction is gone, drop it locally so the list isn't stale.
@@ -261,6 +269,35 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
           dropIfGone(id, e);
           return;
         }
+        throw e;
+      }
+    },
+    [dropIfGone],
+  );
+
+  // A receipt changes only the one transaction it belongs to; the server sends that transaction back.
+  const uploadReceipt = useCallback(
+    async (id: string, file: File) => {
+      const body = new FormData();
+      body.append("file", file);
+      try {
+        const saved = await api<Transaction>(`/api/transactions/${id}/receipt`, { method: "POST", body }, UPLOAD_TIMEOUT_MS);
+        setTransactions((prev) => prev.map((x) => (x.id === id ? saved : x)));
+      } catch (e) {
+        dropIfGone(id, e);
+        throw e;
+      }
+    },
+    [dropIfGone],
+  );
+
+  const removeReceipt = useCallback(
+    async (id: string) => {
+      try {
+        const saved = await api<Transaction>(`/api/transactions/${id}/receipt`, { method: "DELETE" });
+        setTransactions((prev) => prev.map((x) => (x.id === id ? saved : x)));
+      } catch (e) {
+        dropIfGone(id, e);
         throw e;
       }
     },
@@ -464,6 +501,8 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
       add,
       update,
       remove,
+      uploadReceipt,
+      removeReceipt,
       budget,
       saveBudget,
       viewMonth,
@@ -495,7 +534,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
       revokeCaptureToken,
       alerts,
     }),
-    [user, logout, transactions, add, update, remove, budget, saveBudget, viewMonth, customCategories, categoryOf, ensureCategory, renameCategory, deleteCategory, settings, saveSettings, dismissAlerts, saveCard, loans, addLoan, updateLoan, removeLoan, addPayment, removePayment, transfers, addTransfer, updateTransfer, removeTransfer, captured, confirmCaptured, dismissCaptured, getCaptureStatus, createCaptureToken, revokeCaptureToken, alerts],
+    [user, logout, transactions, add, update, remove, uploadReceipt, removeReceipt, budget, saveBudget, viewMonth, customCategories, categoryOf, ensureCategory, renameCategory, deleteCategory, settings, saveSettings, dismissAlerts, saveCard, loans, addLoan, updateLoan, removeLoan, addPayment, removePayment, transfers, addTransfer, updateTransfer, removeTransfer, captured, confirmCaptured, dismissCaptured, getCaptureStatus, createCaptureToken, revokeCaptureToken, alerts],
   );
 
   if (status === "loading" || (status === "ready" && !user) || (status === "ready" && !introDone)) {

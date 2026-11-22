@@ -36,7 +36,20 @@ const TransactionSchema = new Schema(
     amount: { type: Number, required: true },
     date: { type: Date, required: true, index: true },
     account: { type: String, trim: true, maxlength: 80 },
+    /** Legacy: older versions stored only a file name (no file). Never written now; kept so old documents still load. */
     receiptName: { type: String, trim: true, maxlength: 200 },
+    /** The uploaded receipt (a private file in Vercel Blob). `key` is where it lives and is never sent to the browser. */
+    receipt: {
+      type: new Schema(
+        {
+          key: { type: String, required: true, maxlength: 200 },
+          name: { type: String, required: true, maxlength: 200 },
+          type: { type: String, required: true, enum: ["image/jpeg", "image/png", "image/webp", "application/pdf"] },
+          size: { type: Number, required: true, min: 1 },
+        },
+        { _id: false },
+      ),
+    },
   },
   { timestamps: true, strict: "throw" },
 );

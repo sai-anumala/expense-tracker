@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { ChevronLeft, Eye, Pencil, Trash2, X } from "lucide-react";
+import { ChevronLeft, Eye, Paperclip, Pencil, Trash2, X } from "lucide-react";
 import type { Transaction } from "@/lib/data";
 import { money, signedMoney, timeOf } from "@/lib/format";
 import { errorMessage, useAppData } from "@/lib/store";
@@ -10,6 +10,7 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { SwipeActions } from "./SwipeActions";
 import { formatWhen } from "./DateTimePicker";
 import { IconTile } from "./ui";
+import { ReceiptView } from "./ReceiptPicker";
 
 /** Transaction row with swipe-left actions (View / Edit / Delete); see SwipeActions. */
 export function TransactionRow({ t }: { t: Transaction }) {
@@ -58,7 +59,10 @@ export function TransactionRow({ t }: { t: Transaction }) {
       >
         <IconTile icon={cat.icon} tone={income ? "primary" : cat.tone} />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[17px] font-semibold">{t.merchant}</p>
+          <p className="flex items-center gap-1.5 text-[17px] font-semibold">
+            <span className="truncate">{t.merchant}</span>
+            {t.receipt && <Paperclip className="size-4 shrink-0 text-on-surface-variant" role="img" aria-label="Has a receipt" />}
+          </p>
           <p className="truncate text-sm text-on-surface-variant">
             {cat.long} <span aria-hidden>·</span> {timeOf(t.date)}
             {t.account && (
@@ -86,7 +90,7 @@ export function TransactionRow({ t }: { t: Transaction }) {
           <>
             <b className="text-on-surface">{t.merchant}</b>,{" "}
             <b className="tabular-nums text-on-surface">{signedMoney(t.amount)}</b> will be permanently removed and your
-            balance updated.
+            balance updated.{t.receipt && " Its receipt is deleted too."}
             {deleteError && (
               <span role="alert" className="mt-2 block text-secondary">
                 {deleteError}
@@ -159,6 +163,8 @@ function TransactionDetails({ t, onClose, onEdit }: { t: Transaction; onClose: (
             </div>
           ))}
         </dl>
+
+        {t.receipt && <ReceiptView transactionId={t.id} receipt={t.receipt} />}
 
         <div className="mt-5 grid grid-cols-2 gap-2">
           <button onClick={onClose} className="rounded-full bg-surface-container py-2.5 font-medium">

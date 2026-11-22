@@ -6,6 +6,7 @@ import { requireUser } from "@/lib/auth";
 import { MISSING_CATEGORY, ownsCategories } from "@/lib/categoryAccess";
 import { parseTransactionInput, toTransactionDto } from "@/lib/transactionInput";
 import { TransactionModel } from "@/models/Transaction";
+import { deleteReceipt } from "@/lib/receiptStorage";
 
 export const dynamic = "force-dynamic";
 
@@ -31,9 +32,9 @@ export async function PUT(req: Request, { params }: Params) {
   try {
     await connectDb();
     if (!(await ownsCategories(user.userId, [input.value.category]))) return fail(400, MISSING_CATEGORY);
-    const { receiptName, ...fields } = input.value;
-    const update: Record<string, unknown> = { $set: receiptName ? { ...fields, receiptName } : fields };
-    // Clear the payment method if it was removed; keep an existing receipt unless a new one was attached.
+    const fields = input.value;
+    const update: Record<string, unknown> = { $set: fields };
+    // Clear the payment method if it was removed. The receipt is never touched here (see the receipt route).
     if (!fields.account) update.$unset = { account: 1 };
     const doc = await TransactionModel.findOneAndUpdate({ _id: id, userId: user.userId }, update, {
       new: true,
@@ -58,6 +59,14 @@ export async function DELETE(_req: Request, { params }: Params) {
     await connectDb();
     const doc = await TransactionModel.findOneAndDelete({ _id: id, userId: user.userId }).lean();
     if (!doc) return fail(404, NOT_FOUND);
+    // The receipt file goes with the transaction. If storage fails, the transaction is still deleted (the file is just orphaned).
+    if (doc.receipt?.key) {
+      try {
+        await deleteReceipt(doc.receipt.key);
+      } catch (err) {
+        console.error("DELETE /api/transactions/:id could not remove the receipt file", err);
+      }
+    }
     return ok({ id });
   } catch (err) {
     return dbErrorResponse(err, "DELETE /api/transactions/:id", "Failed to delete transaction.");
