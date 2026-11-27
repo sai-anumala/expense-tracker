@@ -4,7 +4,7 @@
 > Read this first; it should answer most questions without exploring the code.
 > **Keep it current:** any change to behaviour, data model, API, env vars, or deployment must update the relevant section here **in the same commit** (see [§15](#15-maintaining-this-file)).
 
-Last updated: 2026-11-22 · Branch model: `develop` → `main` · Live: <https://expense-tracker-sage-six-21.vercel.app>
+Last updated: 2026-11-27 · Branch model: `develop` → `main` · Live: <https://expense-tracker-sage-six-21.vercel.app>
 
 ---
 
@@ -59,7 +59,7 @@ There is **no mock or sample data** anywhere: every number comes from the signed
 | DB | **MongoDB Atlas** via **Mongoose 8.x** | DB name `ledgerly` |
 | Auth | Custom: **bcryptjs** (cost 12) + **jose** JWT (HS256) in httpOnly cookie | No third-party auth provider |
 | Hosting | **Vercel** (Hobby), GitHub integration | |
-| File storage | **Vercel Blob**, private store, via `@vercel/blob` **2.9.0** (pinned) | Receipts only. Credentials are short-lived Vercel OIDC, so the app holds no storage secret |
+| File storage | **Vercel Blob**, private store, via `@vercel/blob` **2.9.0** (pinned) | Receipts only. Credentials: `BLOB_READ_WRITE_TOKEN`, added by Vercel when the store was connected (see §4) |
 | Package manager | npm (`package-lock.json`) | |
 | Tests | **Vitest 4.1.12** (pinned exactly), node environment | Unit tests for pure `src/lib` logic only; no UI/E2E tests yet (see [§16](#16-testing--verification)) |
 
@@ -93,8 +93,8 @@ npm run dev                     # http://localhost:3000 → redirects to /login
 | `MONGODB_URI` | yes | `.env.local`, Vercel (Production + Preview, *sensitive*) | Atlas connection string. Password must be URL-encoded if it has special characters |
 | `MONGODB_DB` | no (default `ledgerly`) | same | Database name |
 | `AUTH_SECRET` | yes | same | ≥ 32 random chars to sign session JWTs (`openssl rand -hex 32`). **Local and Vercel use different values.** Changing it logs everyone out |
-| `VERCEL_OIDC_TOKEN` | auto | `.env.local` | Written by `vercel link` / `vercel env pull`. **Used by the Blob SDK** for receipts when running locally. It expires after about 12 hours, so refresh it with `vercel env pull` (see §17) |
-| `BLOB_STORE_ID` | auto | Vercel (Production + Preview + Development) | Set when the private Blob store is connected to the project. Without it (and without `RECEIPTS_LOCAL_DIR`) the receipt routes answer 503 "Receipts aren't set up on this server yet." |
+| `VERCEL_OIDC_TOKEN` | auto | `.env.local` | Written by `vercel link` / `vercel env pull`; expires after about 12 hours. Not used for receipts unless `BLOB_STORE_ID` is also set (the Blob SDK uses OIDC only when both are present) |
+| `BLOB_READ_WRITE_TOKEN` | auto | Vercel (Production + Preview + Development), `.env.local` via `vercel env pull` | Added when the private Blob store `ledgerly-receipts` was connected (2026-11-27). **Treat as a secret.** The Blob SDK uses it for receipts. Without it (and without `RECEIPTS_LOCAL_DIR`) the receipt routes answer 503 "Receipts aren't set up on this server yet." `BLOB_STORE_ID` (OIDC) is also accepted but isn't set |
 | `RECEIPTS_LOCAL_DIR` | no | local / scratch only | Store receipts in this folder instead of Blob, for testing without Vercel credentials. **Ignored when `VERCEL` is set**, so it can never be active on Vercel |
 
 Rules:
@@ -124,7 +124,7 @@ git checkout develop
 - GitHub: `sai-anumala/expense-tracker` (private).
 - Vercel: team `sai-anumalas-projects` (`team_xdN7BdWZfR6IECLZQRCcbJjx`), project `expense-tracker` (`prj_q179X7ZAKzr71LP7JcrgS2vgpz4a`). Local link in `.vercel/` (git-ignored).
 - MongoDB Atlas: Network Access allows `0.0.0.0/0` (required: Vercel has no fixed IPs).
-- Receipts live in one **private Vercel Blob store** shared by Preview, local dev and production (they share the database, so a transaction's receipt must be reachable from all of them). Paths are `receipts/<userId>/<transactionId>/<random>.<ext>`.
+- Receipts live in one **private Vercel Blob store** (`ledgerly-receipts`, `store_ToqdRoza9L3btJeo`, region iad1, same as the functions) shared by Preview, local dev and production (they share the database, so a transaction's receipt must be reachable from all of them). Paths are `receipts/<userId>/<transactionId>/<random>.<ext>`.
 - ⚠️ **Preview, local dev and production all share the same database (`ledgerly`).** Testing on `develop` touches real users' data. (A separate `ledgerly_dev` DB was offered and declined.)
 - Vercel CLI: use `npx vercel …` (not installed globally). Logs: `npx vercel logs --deployment <url> --query 'level:error'` (Hobby keeps about 30 min).
 - Design source: Google Stitch project `7559211481556998549` ("Clean Expense Tracker"); screenshots and `DESIGN.md` copied to `design/`.
@@ -784,8 +784,9 @@ For receipts without Vercel credentials, start the scratch server with `RECEIPTS
 | `capture.email timed out` / `capture.email slow` in the logs | `/api/capture/email` gives up after 25 s with a 503 (it once hung to Vercel's 300 s limit; see the row above) and the script retries on its next run. The log lists each step reached with its timing, so the last step shows where it stuck. A retry after a late save is caught by the unique `dedupeKey` |
 | A bank alert never appears in To review | Check the sender is in `BANK_SENDERS`, then the script's Executions log in script.google.com. A 200 with `captured: false` means the parser ignored it (see `reason`); unrecognised bank wording needs a rule in `lib/bankAlertParser.ts`, tested with made-up details only |
 | `Cannot read properties of undefined (reading 'createCollection')` after adding a model | Don't call `Model.init()` for new models in routes: it can stay failed if it started before the connection opened. Use `ensureIndexes()` from `lib/db.ts` after `connectDb()` |
-| "Receipts aren't set up on this server yet." (503) when attaching | No Blob store is connected: `BLOB_STORE_ID` is missing. Create a private store and connect it to the project for Production, Preview and Development (§4/§5). The transaction itself still saves; only the receipt fails |
-| Receipts fail locally with a Blob auth error | `VERCEL_OIDC_TOKEN` in `.env.local` has expired (about 12 h). Run `vercel env pull .env.local --yes`, then restart `npm run dev` |
+| "Receipts aren't set up on this server yet." (503) when attaching | No Blob credentials in that environment: `BLOB_READ_WRITE_TOKEN` is missing. Check `npx vercel env ls` and that `ledgerly-receipts` is connected for Production, Preview and Development (§4/§5); a deployment built before the variable existed needs a redeploy. Locally: `npx vercel env pull .env.local --yes`, then restart `npm run dev`. The transaction itself still saves; only the receipt fails |
+| Receipts fail locally with a Blob auth error | Missing or stale `BLOB_READ_WRITE_TOKEN` in `.env.local` (or `BLOB_STORE_ID` set with an expired `VERCEL_OIDC_TOKEN`). Run `npx vercel env pull .env.local --yes`, then restart `npm run dev` |
+| `vercel blob list` says "VERCEL_OIDC_TOKEN and BLOB_STORE_ID must both be set" | CLI-only check: it reads `.env.local`, which has an OIDC token but no store id. Pass `--rw-token` explicitly. The app's SDK isn't affected (it falls back to `BLOB_READ_WRITE_TOKEN`) |
 | A transaction doesn't change the Total Available Balance | Its date is earlier than when the balance was entered (`balanceAsOf`); by design. Re-enter the balance via ✎ if needed. Card purchases (paid with "Credit Card") never change it; paying the bill does |
 | Existing user's balance jumped after the credit card release | Card purchases since `balanceAsOf` stopped reducing it, and card bill transfers started reducing it. Expected until they re-enter the balance with the unpaid card amount (the Overview shows a one-time "Update balance" prompt while `cardDueAtAnchor` is null) |
 
@@ -840,6 +841,7 @@ For receipts without Vercel credentials, start the scratch server with `RECEIPTS
 | 2026-11-11 | Every colour moved onto tokens: transfer blue, coin, chart palette and on-colour text; unused per-category colours removed; `lib/themeColors.ts` for the two CSS-less spots | User request: change a colour in one place |
 | 2026-11-22 | **One four-level budget colour scale**: green ≤ 60%, yellow 61-80%, orange 81-100%, red over 100% (solid red pill), used for every budget figure; replaces the 30%-left, 80%, 85% and 90% points and the "N% left" line | User request. Four different amber points made the same budget look different on each element, and over budget was never red outside the Remaining figure. The 90% bell reminder (`BUDGET_WARN`) is unchanged |
 | 2026-11-22 | **Receipt upload**: one photo or PDF (≤ 4 MB) per transaction in a **private Vercel Blob** store, served only through an owner-checked route; paperclip on rows and a Receipt section in View; transaction saved first, then the file | User request ("build it properly"). Blob rather than Cloudinary: receipts are private financial documents (no public URLs), no extra vendor or secret, short-lived OIDC credentials, PDFs work without extra setup. 4 MB because Vercel rejects request bodies over 4.5 MB, so photos are shrunk in the browser. Type is decided from the file's bytes so SVG/HTML can't be stored |
+| 2026-11-27 | Blob store `ledgerly-receipts` created (private, iad1) and connected to all three environments; the app authenticates with the `BLOB_READ_WRITE_TOKEN` Vercel added, not OIDC + `BLOB_STORE_ID` as planned | Connecting a store via the CLI adds the read-write token only. The SDK already supports it, so no code change. iad1 because the functions run there |
 | 2026-11-22 | **Month picker with budget history**: past months are viewable (read-only) on Overview and Budgets, measured against the limit saved in that month. Each budget save also writes a per-month entry in `budgets.history` (client sends its local month, server accepts UTC month ±1), capped at 36 | User request (look back at last month; limit "from that month"). Server runs in UTC, so the client supplies the month. Shared month in the provider so both screens agree. Balance, card and reminders stay "today" because they are not monthly figures |
 | 2026-11-11 | **Dark mode**: dark values for every token under `data-theme="dark"`; default light; Light / Dark / Device in the account menu; cookie + inline head script | User request. Cookie rather than localStorage (no app state in browser storage) and not on the account (a per-device display choice); the head script avoids a light flash before React loads |
 | 2026-11-03 | **In-app reminders**: bell panel + Overview banner computed from loaded data (`lib/alerts.ts`); no persistence of read/unread or dismissals (badge = current urgent + warning count). Banner rendered from `AppHeader` on `/` so the Overview page needn't change | Agreed card spec; no DB/storage needed, nothing to go stale. Push/email out of scope |
