@@ -22,7 +22,7 @@ function Thumb({ src, pdf }: { src?: string; pdf: boolean }) {
   );
 }
 
-/** A saved receipt as shown in the View pop-up: the photo (tap to enlarge) or an Open link for a PDF. */
+/** A saved receipt as shown in the View pop-up: a thumbnail chip that opens the photo or PDF in a new tab. */
 export function ReceiptView({ transactionId, receipt }: { transactionId: string; receipt: Receipt }) {
   const url = receiptUrl(transactionId);
   const image = isImageType(receipt.type);

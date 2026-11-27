@@ -1,6 +1,6 @@
 # Ledgerly: How Every Feature Works
 
-User guide for every screen and calculation in Ledgerly. Last updated: 2026-11-22.
+User guide for every screen and calculation in Ledgerly. Last updated: 2026-11-27.
 
 > **Keep this current.** Any change to a feature, formula or screen that a user would notice must update this guide (and its screenshot, if the screen looks different) in the same commit. See [AGENTS.md §15](../AGENTS.md#15-maintaining-this-file).
 >
@@ -86,7 +86,7 @@ Every expense and income is one transaction: an amount, a category, a date and t
 
 - Photos are shrunk on your device before they upload, so a large phone photo is fine. A PDF over 4 MB is refused with a message.
 - The file is uploaded when you save. If the transaction saves but the receipt doesn't upload, your transaction is safe: you stay on Edit with a message, and can try again with **Save changes**.
-- A transaction with a receipt shows a small **paperclip** next to its name. Tap it, choose **View**, and you will see the photo (tap it to open it full size) or an **Open** button for a PDF.
+- A transaction with a receipt shows a small **paperclip** next to its name. Tap the transaction and choose **View**: the Receipt section shows a small preview with the file name and size. Tap **View** (photo) or **Open** (PDF) to see the full file in a new tab.
 - On Edit you can **Replace** or **Remove** the receipt (before saving you can still **Undo** a removal). Deleting a transaction deletes its receipt too.
 - Receipts are private to your account. Nobody else can open them, even with the address.
 
